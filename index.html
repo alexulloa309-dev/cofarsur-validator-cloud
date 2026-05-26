@@ -380,6 +380,36 @@
       margin-bottom: 15px;
     }
 
+    .client-tab {
+      padding: 10px 15px;
+      background: #f0f0f0;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: all 0.2s;
+      color: #666;
+    }
+
+    .client-tab:hover {
+      background: #e0e0e0;
+    }
+
+    .client-tab.active {
+      background: #667eea;
+      color: white;
+      border-bottom-color: #667eea;
+    }
+
+    .client-tab .tab-count {
+      font-size: 11px;
+      opacity: 0.8;
+      margin-left: 5px;
+    }
+    }
+
     .filter-section input {
       flex: 1;
       padding: 8px 12px;
@@ -395,21 +425,18 @@
       font-size: 13px;
     }
 
-    .debug-log {
-      background: #f5f5f5;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 10px;
-      margin-top: 10px;
-      font-size: 11px;
-      color: #666;
-      max-height: 150px;
-      overflow-y: auto;
-      font-family: monospace;
-    }
+    @media (max-width: 768px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
 
-    .debug-log p {
-      margin: 2px 0;
+      .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .header h1 {
+        font-size: 24px;
+      }
     }
 
     .scrollbar {
@@ -433,20 +460,6 @@
 
     .scrollbar::-webkit-scrollbar-thumb:hover {
       background: #5568d3;
-    }
-
-    @media (max-width: 768px) {
-      .main-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .stats-bar {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .header h1 {
-        font-size: 24px;
-      }
     }
   </style>
 </head>
@@ -494,8 +507,6 @@
             🗑️ Limpiar
           </button>
         </div>
-
-        <div id="debugLog" class="debug-log"></div>
       </div>
 
       <!-- Panel derecho: Resultados -->
@@ -532,6 +543,11 @@
           </select>
         </div>
 
+        <!-- Tabs de clientes especiales -->
+        <div id="clientTabs" style="display: none; margin-bottom: 15px; border-bottom: 2px solid #eee; overflow-x: auto;">
+          <!-- Se generan dinámicamente -->
+        </div>
+
         <div class="results-container scrollbar" id="resultsContainer">
           <div class="empty-state">
             <div class="empty-state-icon">📋</div>
@@ -546,7 +562,7 @@
     // ============ CONFIGURACIÓN ============
     const GITHUB_REPO = 'alexulioa309-dev/cofarsur-validator-cloud';
     const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main`;
-    const NOTAS_FILE = 'NOTAS_DE_RECUPERO.csv'; // ← NOMBRE CORRECTO
+    const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
     
     const SIMILARITY_THRESHOLD = 0.80;
     const TOLERANCE_WARNING = 0.05;
@@ -555,11 +571,10 @@
     // ============ ESTADO DE LA APP ============
     let appState = {
       currentFile: null,
-      specialClients: [],
+      specialClients: null,
       clientsData: {},
       transfers: [],
-      filteredTransfers: [],
-      debugLogs: []
+      filteredTransfers: []
     };
 
     // ============ ELEMENTOS DOM ============
@@ -576,21 +591,10 @@
     const resultsContainer = document.getElementById('resultsContainer');
     const searchInput = document.getElementById('searchInput');
     const filterStatus = document.getElementById('filterStatus');
-    const debugLog = document.getElementById('debugLog');
-
-    // ============ FUNCIONES DE DEBUG ============
-    function addDebugLog(message) {
-      const timestamp = new Date().toLocaleTimeString();
-      const logEntry = `[${timestamp}] ${message}`;
-      appState.debugLogs.push(logEntry);
-      
-      // Mostrar últimos 10 logs
-      debugLog.innerHTML = appState.debugLogs.slice(-10).map(log => `<p>${log}</p>`).join('');
-      debugLog.scrollTop = debugLog.scrollHeight;
-    }
 
     // ============ EVENT LISTENERS ============
 
+    // Drag and drop
     uploadArea.addEventListener('click', () => fileInput.click());
     uploadArea.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -611,8 +615,8 @@
     fileInput.addEventListener('change', handleFileSelect);
     analyzeBtn.addEventListener('click', analyzeTransfers);
     clearBtn.addEventListener('click', clearAll);
-    searchInput.addEventListener('input', applyFilters);
-    filterStatus.addEventListener('change', applyFilters);
+    searchInput.addEventListener('input', filterResults);
+    filterStatus.addEventListener('change', filterResults);
 
     // ============ FUNCIONES ============
 
@@ -636,12 +640,11 @@
           fileInfo.style.display = 'block';
           updateStatus('loading', '⏳ Archivo cargado: ' + data.length + ' transfers');
           analyzeBtn.disabled = false;
-          addDebugLog(`✅ Archivo cargado: ${data.length} transfers`);
         };
         reader.readAsArrayBuffer(file);
       } catch (error) {
         updateStatus('error', '❌ Error al leer archivo');
-        addDebugLog(`❌ Error al leer archivo: ${error.message}`);
+        console.error(error);
       }
     }
 
@@ -652,107 +655,91 @@
       }
 
       showLoading(true);
-      appState.debugLogs = [];
-      addDebugLog('🚀 Iniciando análisis...');
+      updateStatus('loading', '📥 Descargando NOTAS_DE_RECUPERO desde GitHub...');
 
       try {
-        // Paso 1: Descargar NOTAS DE RECUPERO
-        updateStatus('loading', '🔄 Descargando clientes especiales desde GitHub...');
-        addDebugLog(`📥 Descargando: ${NOTAS_FILE}`);
-
-        const notasUrl = `${GITHUB_RAW_URL}/${NOTAS_FILE}`;
-        addDebugLog(`URL: ${notasUrl}`);
-
-        const notasRes = await fetch(notasUrl);
+        // PASO 1: Descargar NOTAS DE RECUPERO desde GitHub
+        const notasUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/NOTAS_DE_RECUPERO.xlsx`;
+        const notasProxyUrl = `${CORS_PROXY}${encodeURIComponent(notasUrl)}`;
         
-        if (!notasRes.ok) {
-          throw new Error(`HTTP ${notasRes.status}: No se pudo descargar ${NOTAS_FILE}`);
-        }
-
+        const notasRes = await fetch(notasProxyUrl);
+        if (!notasRes.ok) throw new Error(`No se pudo descargar NOTAS_DE_RECUPERO.xlsx (Status: ${notasRes.status})`);
+        
         const notasBuffer = await notasRes.arrayBuffer();
         const notasWorkbook = XLSX.read(notasBuffer);
-        const notasData = XLSX.utils.sheet_to_json(
-          notasWorkbook.Sheets['Hoja2'] || notasWorkbook.Sheets[notasWorkbook.SheetNames[0]]
-        );
+        const notasData = XLSX.utils.sheet_to_json(notasWorkbook.Sheets['Hoja2'] || notasWorkbook.Sheets[notasWorkbook.SheetNames[0]]);
 
+        // PASO 2: Procesar NOTAS para obtener clientes especiales
         appState.specialClients = procesarNotasRecuperó(notasData);
-        addDebugLog(`✅ Clientes especiales cargados: ${appState.specialClients.length}`);
+        console.log('Clientes especiales encontrados:', appState.specialClients.length);
 
-        // Paso 2: NUEVO MODELO - Procesar cliente por cliente
-        const resultados = [];
-        
-        for (const cliente of appState.specialClients) {
-          addDebugLog(`\n🔄 Procesando cliente: ${cliente.cliente_nombre}`);
-          
-          // Filtrar transfers de este cliente
-          const transfersDelCliente = appState.transfers.filter(t => {
-            const clienteTransfer = (t['Cliente'] || '').toString().trim().toUpperCase();
-            const clienteNombre = cliente.cliente_nombre.toUpperCase();
-            return clienteTransfer.includes(clienteNombre) || clienteNombre.includes(clienteTransfer);
-          });
+        // PASO 3: Procesar cada cliente especial
+        const resultadosPorCliente = {};
+        const totalClientes = appState.specialClients.length;
 
-          addDebugLog(`  └─ Transfers encontrados: ${transfersDelCliente.length}`);
+        for (let i = 0; i < appState.specialClients.length; i++) {
+          const cliente = appState.specialClients[i];
+          updateStatus('loading', `📊 Procesando cliente ${i + 1}/${totalClientes}: ${cliente.cliente_nombre}...`);
 
-          if (transfersDelCliente.length === 0) {
-            addDebugLog(`  └─ Sin transfers para este cliente`);
-            continue;
-          }
+          // PASO 3A: Descargar Excel del cliente específico
+          const clienteNormalizado = cliente.cliente_nombre
+            .toLowerCase()
+            .replace(/\s+/g, '_')
+            .replace(/[^\w_]/g, '');
 
-          // Buscar archivo del cliente
-          const clienteFileName = buscarArchivoCliente(cliente.cliente_nombre);
-          addDebugLog(`  └─ Buscando archivo: ${clienteFileName}`);
+          const clientFileName = `${clienteNormalizado}.xlsx`;
+          const clientUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/clientes/${clientFileName}`;
+          const clientProxyUrl = `${CORS_PROXY}${encodeURIComponent(clientUrl)}`;
 
-          const clienteUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/clientes/${clienteFileName}`;
-
-          let clientData = null;
+          let datosCliente = [];
           try {
-            const clientRes = await fetch(clienteUrl);
+            const clientRes = await fetch(clientProxyUrl);
             if (clientRes.ok) {
               const clientBuffer = await clientRes.arrayBuffer();
               const clientWorkbook = XLSX.read(clientBuffer);
-              const clientSheetData = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
-              clientData = {
-                nombre: cliente.cliente_nombre,
-                productos: clientSheetData
-              };
-              addDebugLog(`  └─ ✅ Datos cargados: ${clientSheetData.length} productos`);
+              datosCliente = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
             } else {
-              addDebugLog(`  └─ ⚠️ No se encontró archivo: ${clienteFileName}`);
+              console.warn(`No se pudo descargar ${clientFileName} (Status: ${clientRes.status})`);
             }
           } catch (e) {
-            addDebugLog(`  └─ ⚠️ Error descargando: ${e.message}`);
+            console.warn(`Error descargando ${clientFileName}:`, e.message);
           }
 
-          // Validar cada transfer de este cliente
+          // PASO 3B: Filtrar transfers de este cliente específico
+          const transfersDelCliente = appState.transfers.filter(transfer => {
+            const nombreTransfer = (transfer['Cliente'] || '').toString().trim().toUpperCase();
+            const nombreCliente = cliente.cliente_nombre.toUpperCase();
+            return nombreTransfer === nombreCliente;
+          });
+
+          // PASO 3C: Validar transfers del cliente
+          const validaciones = [];
           for (const transfer of transfersDelCliente) {
-            const validacion = await validateTransfer(transfer, cliente, clientData);
-            resultados.push(validacion);
+            const validacion = await validateTransferForClient(transfer, cliente, datosCliente);
+            validaciones.push(validacion);
           }
+
+          // PASO 3D: Guardar resultados del cliente
+          resultadosPorCliente[cliente.cliente_nombre] = {
+            cliente_nombre: cliente.cliente_nombre,
+            total: validaciones.length,
+            ok: validaciones.filter(v => v.estado === 'OK').length,
+            advertencia: validaciones.filter(v => v.estado === 'ADVERTENCIA').length,
+            error: validaciones.filter(v => v.estado === 'ERROR').length,
+            validaciones: validaciones
+          };
         }
 
-        appState.filteredTransfers = resultados;
-        displayResults(resultados);
-        updateStatus('success', '✅ Validación completada');
-        addDebugLog(`\n✅ Análisis finalizado: ${resultados.length} transfers procesados`);
+        appState.resultadosPorCliente = resultadosPorCliente;
+        displayResultsByClient(resultadosPorCliente);
+        updateStatus('success', '✅ Validación completada por cliente');
 
       } catch (error) {
         console.error('Error:', error);
         updateStatus('error', '❌ Error: ' + error.message);
-        addDebugLog(`❌ ERROR: ${error.message}`);
       } finally {
         showLoading(false);
       }
-    }
-
-    function buscarArchivoCliente(clienteName) {
-      // Intenta diferentes variantes del nombre
-      const variantes = [
-        `${clienteName}.xlsx`,
-        `${clienteName.toUpperCase()}.xlsx`,
-        `${clienteName.toLowerCase()}.xlsx`,
-        clienteName.replace(/\s+/g, '_') + '.xlsx'
-      ];
-      return variantes[0]; // Retorna la primera (puedes mejorar esto)
     }
 
     function procesarNotasRecuperó(data) {
@@ -793,7 +780,7 @@
       return clients;
     }
 
-    async function validateTransfer(transfer, clienteEspecial, clientData) {
+    async function validateTransfer(transfer) {
       try {
         const nro_transfer = transfer['Nro. Transfer'] || transfer['Numero'] || '';
         const laboratorio = transfer['Laboratorio'] || transfer['Lab'] || '';
@@ -802,10 +789,26 @@
         const producto = transfer['Producto'] || transfer['Desc'] || '';
         const cantidad = parseInt(transfer['Cantidad'] || 0);
 
-        // ✅ Cliente ya está confirmado (encontrado por cliente especial)
+        // Paso 1: Verificar si cliente está en NOTAS DE RECUPERO
+        const clientMatch = findClientMatch(cliente, appState.specialClients);
 
-        // Verificar laboratorio
-        const labsPermitidos = clienteEspecial.laboratorios;
+        if (!clientMatch) {
+          return {
+            nro_transfer,
+            cliente,
+            laboratorio,
+            producto,
+            ean: cod_barra,
+            cantidad_real: cantidad,
+            cantidad_esperada: null,
+            estado: 'DESCARTADO',
+            mensaje: `Cliente "${cliente}" no está en lista especial`,
+            diferencia_pct: null
+          };
+        }
+
+        // Paso 2: Verificar laboratorio
+        const labsPermitidos = clientMatch.laboratorios;
         const todosTodos = labsPermitidos.includes('TODOS LOS LABORATORIOS') ||
                           labsPermitidos.some(lab => lab.toLowerCase().includes('todos'));
 
@@ -814,42 +817,47 @@
           if (!labMatch) {
             return {
               nro_transfer,
-              cliente: clienteEspecial.cliente_nombre,
+              cliente: clientMatch.cliente_nombre,
               laboratorio,
               producto,
               ean: cod_barra,
               cantidad_real: cantidad,
               cantidad_esperada: null,
               estado: 'DESCARTADO',
-              mensaje: `Laboratorio "${laboratorio}" no permitido para ${clienteEspecial.cliente_nombre}`,
+              mensaje: `Laboratorio "${laboratorio}" no permitido`,
               diferencia_pct: null
             };
           }
         }
 
-        // Verificar datos del cliente
+        // Paso 3: Buscar datos del cliente
+        const clientData = Object.values(appState.clientsData).find(c => 
+          c.nombre.toUpperCase() === clientMatch.cliente_nombre.toUpperCase() ||
+          clientMatch.cliente_nombre.toUpperCase().includes(c.nombre.toUpperCase())
+        );
+
         if (!clientData) {
           return {
             nro_transfer,
-            cliente: clienteEspecial.cliente_nombre,
+            cliente: clientMatch.cliente_nombre,
             laboratorio,
             producto,
             ean: cod_barra,
             cantidad_real: cantidad,
             cantidad_esperada: null,
             estado: 'PENDIENTE',
-            mensaje: `Datos del cliente no disponibles`,
+            mensaje: `Datos del cliente no disponibles en el sistema`,
             diferencia_pct: null
           };
         }
 
-        // Buscar producto
+        // Paso 4: Buscar producto
         const productoMatch = findProductoMatch(cod_barra, producto, laboratorio, clientData.productos);
 
         if (!productoMatch) {
           return {
             nro_transfer,
-            cliente: clienteEspecial.cliente_nombre,
+            cliente: clientMatch.cliente_nombre,
             laboratorio,
             producto,
             ean: cod_barra,
@@ -861,7 +869,7 @@
           };
         }
 
-        // Comparar cantidades
+        // Paso 5: Comparar cantidades
         const cantidadEsperada = parseInt(productoMatch['C'] || productoMatch['Cantidad'] || 0);
         const diferencia = Math.abs(cantidad - cantidadEsperada);
         const diferenciaPct = cantidadEsperada > 0 ? (diferencia / cantidadEsperada) : 0;
@@ -884,7 +892,7 @@
 
         return {
           nro_transfer,
-          cliente: clienteEspecial.cliente_nombre,
+          cliente: clientMatch.cliente_nombre,
           laboratorio,
           producto: productoMatch['Producto'] || productoMatch['Nombre'] || producto,
           ean: cod_barra,
@@ -897,6 +905,7 @@
         };
 
       } catch (error) {
+        console.error('Error validando transfer:', error);
         return {
           nro_transfer: transfer['Nro. Transfer'] || '?',
           cliente: transfer['Cliente'] || '?',
@@ -907,6 +916,27 @@
           diferencia_pct: null
         };
       }
+    }
+
+    function findClientMatch(clienteName, specialClients) {
+      if (!clienteName || !specialClients) return null;
+      const cleaned = clienteName.toString().trim().toUpperCase();
+
+      // Búsqueda exacta
+      const exactMatch = specialClients.find(c => c.cliente_nombre.toUpperCase() === cleaned);
+      if (exactMatch) return exactMatch;
+
+      // Búsqueda fuzzy
+      const scores = specialClients.map(client => ({
+        client,
+        score: stringSimilarity.compareTwoStrings(cleaned, client.cliente_nombre.toUpperCase())
+      }));
+
+      const bestMatch = scores.reduce((best, current) =>
+        current.score > best.score ? current : best
+      );
+
+      return bestMatch.score >= SIMILARITY_THRESHOLD ? bestMatch.client : null;
     }
 
     function findLaboratorioMatch(laboratorio, labsPermitidos) {
@@ -931,6 +961,7 @@
     function findProductoMatch(ean, productName, laboratorio, productos) {
       if (!productos || productos.length === 0) return null;
 
+      // Búsqueda por EAN
       if (ean && ean.toString().trim()) {
         const eanMatch = productos.find(p => {
           const pEan = p['EAN'] || p['Ean'] || p['Cod. Barra'] || '';
@@ -939,6 +970,7 @@
         if (eanMatch) return eanMatch;
       }
 
+      // Búsqueda por nombre + laboratorio
       if (productName && productName.toString().trim()) {
         const cleaned = productName.toString().trim().toUpperCase();
         const labCleaned = laboratorio.toString().trim().toUpperCase();
@@ -977,7 +1009,238 @@
       return null;
     }
 
-    function displayResults(resultados) {
+    async function validateTransferForClient(transfer, cliente, datosCliente) {
+      try {
+        const nro_transfer = transfer['Nro. Transfer'] || transfer['Numero'] || '';
+        const laboratorio = transfer['Laboratorio'] || transfer['Lab'] || '';
+        const cod_barra = transfer['Cod. Barra'] || transfer['EAN'] || '';
+        const producto = transfer['Producto'] || transfer['Desc'] || '';
+        const cantidad = parseInt(transfer['Cantidad'] || 0);
+
+        // Verificar laboratorio
+        const labsPermitidos = cliente.laboratorios;
+        const todosTodos = labsPermitidos.includes('TODOS LOS LABORATORIOS') ||
+                          labsPermitidos.some(lab => lab.toLowerCase().includes('todos'));
+
+        if (!todosTodos) {
+          const labMatch = findLaboratorioMatch(laboratorio, labsPermitidos);
+          if (!labMatch) {
+            return {
+              nro_transfer,
+              cliente: cliente.cliente_nombre,
+              laboratorio,
+              producto,
+              ean: cod_barra,
+              cantidad_real: cantidad,
+              cantidad_esperada: null,
+              estado: 'ERROR',
+              mensaje: `Laboratorio "${laboratorio}" no permitido para este cliente`,
+              diferencia_pct: null
+            };
+          }
+        }
+
+        // Si no tenemos datos del cliente, no podemos comparar
+        if (!datosCliente || datosCliente.length === 0) {
+          return {
+            nro_transfer,
+            cliente: cliente.cliente_nombre,
+            laboratorio,
+            producto,
+            ean: cod_barra,
+            cantidad_real: cantidad,
+            cantidad_esperada: null,
+            estado: 'PENDIENTE',
+            mensaje: `Datos del cliente no disponibles para comparación`,
+            diferencia_pct: null
+          };
+        }
+
+        // Buscar producto en datos del cliente
+        const productoMatch = findProductoMatch(cod_barra, producto, laboratorio, datosCliente);
+
+        if (!productoMatch) {
+          return {
+            nro_transfer,
+            cliente: cliente.cliente_nombre,
+            laboratorio,
+            producto,
+            ean: cod_barra,
+            cantidad_real: cantidad,
+            cantidad_esperada: null,
+            estado: 'ERROR',
+            mensaje: `Producto no encontrado en orden del cliente`,
+            diferencia_pct: null
+          };
+        }
+
+        // Comparar cantidades
+        const cantidadEsperada = parseInt(productoMatch['C'] || productoMatch['Cantidad'] || 0);
+        const diferencia = Math.abs(cantidad - cantidadEsperada);
+        const diferenciaPct = cantidadEsperada > 0 ? (diferencia / cantidadEsperada) : 0;
+
+        let estado, mensaje;
+
+        if (diferencia === 0) {
+          estado = 'OK';
+          mensaje = '✓ Cantidad coincide exactamente. Listo para facturar.';
+        } else if (diferenciaPct <= TOLERANCE_WARNING) {
+          estado = 'OK_APROX';
+          mensaje = `⚠ Diferencia menor (${(diferenciaPct * 100).toFixed(1)}%). Revisar pero probablemente OK.`;
+        } else if (diferenciaPct <= TOLERANCE_ERROR) {
+          estado = 'ADVERTENCIA';
+          mensaje = `⚠ Diferencia: ${diferencia} unidades (${(diferenciaPct * 100).toFixed(1)}%). Revisar con cliente.`;
+        } else {
+          estado = 'ERROR';
+          mensaje = `✗ Diferencia GRAVE: ${diferencia} unidades (${(diferenciaPct * 100).toFixed(1)}%). Bloquear facturación.`;
+        }
+
+        return {
+          nro_transfer,
+          cliente: cliente.cliente_nombre,
+          laboratorio,
+          producto: productoMatch['Producto'] || productoMatch['Nombre'] || producto,
+          ean: cod_barra,
+          cantidad_real: cantidad,
+          cantidad_esperada: cantidadEsperada,
+          diferencia_pct: Math.round(diferenciaPct * 10000) / 100,
+          diferencia_unidades: diferencia,
+          estado,
+          mensaje
+        };
+
+      } catch (error) {
+        console.error('Error validando transfer:', error);
+        return {
+          nro_transfer: transfer['Nro. Transfer'] || '?',
+          cliente: cliente.cliente_nombre,
+          estado: 'ERROR',
+          mensaje: `Error: ${error.message}`,
+          cantidad_real: 0,
+          cantidad_esperada: null,
+          diferencia_pct: null
+        };
+      }
+    }
+
+    function displayResultsByClient(resultadosPorCliente) {
+      const container = document.getElementById('resultsContainer');
+      const tabsDiv = document.getElementById('clientTabs');
+      
+      // Mostrar tabs
+      tabsDiv.innerHTML = '';
+      tabsDiv.style.display = 'flex';
+      
+      const clientes = Object.keys(resultadosPorCliente);
+      
+      clientes.forEach((clienteName, index) => {
+        const stats = resultadosPorCliente[clienteName];
+        const btn = document.createElement('button');
+        btn.className = 'client-tab' + (index === 0 ? ' active' : '');
+        btn.innerHTML = `${clienteName} <span class="tab-count">(${stats.total})</span>`;
+        btn.onclick = () => selectClientTab(clienteName, resultadosPorCliente);
+        tabsDiv.appendChild(btn);
+      });
+
+      // Mostrar primer cliente
+      if (clientes.length > 0) {
+        selectClientTab(clientes[0], resultadosPorCliente);
+      }
+
+      // Actualizar stats globales
+      updateGlobalStats(resultadosPorCliente);
+    }
+
+    function selectClientTab(clientName, resultadosPorCliente) {
+      // Marcar tab activo
+      document.querySelectorAll('.client-tab').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.includes(clientName)) {
+          btn.classList.add('active');
+        }
+      });
+
+      // Mostrar resultados del cliente
+      const stats = resultadosPorCliente[clientName];
+      const container = document.getElementById('resultsContainer');
+
+      if (stats.validaciones.length === 0) {
+        container.innerHTML = '<div class="no-results">Sin transfers para este cliente</div>';
+        return;
+      }
+
+      container.innerHTML = stats.validaciones.map(v => `
+        <div class="result-card result-${v.estado.toLowerCase()}">
+          <div class="result-header">
+            <span class="result-status">${getStatusIcon(v.estado)}</span>
+            <span class="result-nro">#${v.nro_transfer}</span>
+            <span class="result-producto">${v.producto}</span>
+          </div>
+          <div class="result-details">
+            <div class="result-detail">
+              <span class="label">Cliente:</span>
+              <span>${v.cliente}</span>
+            </div>
+            <div class="result-detail">
+              <span class="label">Laboratorio:</span>
+              <span>${v.laboratorio}</span>
+            </div>
+            <div class="result-detail">
+              <span class="label">EAN:</span>
+              <span>${v.ean || '-'}</span>
+            </div>
+          </div>
+          <div class="result-quantities">
+            <div class="cant">
+              <span class="cant-label">Esperado</span>
+              <span class="cant-value">${v.cantidad_esperada || '-'}</span>
+            </div>
+            <div class="cant">
+              <span class="cant-label">Recibido</span>
+              <span class="cant-value">${v.cantidad_real}</span>
+            </div>
+            ${v.diferencia_pct !== null ? `
+            <div class="cant">
+              <span class="cant-label">Diferencia</span>
+              <span class="cant-value ${v.diferencia_pct > 0 ? 'cant-diferencia' : ''}">${v.diferencia_pct || 0}%</span>
+            </div>
+            ` : ''}
+          </div>
+          <div class="result-mensaje">${v.mensaje}</div>
+        </div>
+      `).join('');
+    }
+
+    function updateGlobalStats(resultadosPorCliente) {
+      let totalTransfers = 0;
+      let okCount = 0;
+      let warningCount = 0;
+      let errorCount = 0;
+
+      Object.values(resultadosPorCliente).forEach(stats => {
+        totalTransfers += stats.total;
+        okCount += stats.ok;
+        warningCount += stats.advertencia;
+        errorCount += stats.error;
+      });
+
+      document.getElementById('statTotal').textContent = totalTransfers;
+      document.getElementById('statOk').textContent = okCount;
+      document.getElementById('statWarning').textContent = warningCount;
+      document.getElementById('statError').textContent = errorCount;
+    }
+
+    function getStatusIcon(estado) {
+      const icons = {
+        'OK': '✅',
+        'OK_APROX': '✓',
+        'ADVERTENCIA': '⚠️',
+        'ERROR': '❌',
+        'DESCARTADO': '⊘',
+        'PENDIENTE': '⏳'
+      };
+      return icons[estado] || '?';
+    }
       const stats = {
         total: resultados.length,
         ok: resultados.filter(r => r.estado === 'OK').length,
@@ -1039,7 +1302,7 @@
       });
     }
 
-    function applyFilters() {
+    function filterResults() {
       const searchTerm = searchInput.value.toLowerCase();
       const statusFilter = filterStatus.value;
 
@@ -1075,11 +1338,10 @@
     function clearAll() {
       appState = {
         currentFile: null,
-        specialClients: [],
+        specialClients: null,
         clientsData: {},
         transfers: [],
-        filteredTransfers: [],
-        debugLogs: []
+        filteredTransfers: []
       };
 
       fileInput.value = '';
@@ -1100,7 +1362,6 @@
 
       searchInput.value = '';
       filterStatus.value = '';
-      debugLog.innerHTML = '';
     }
   </script>
 </body>
