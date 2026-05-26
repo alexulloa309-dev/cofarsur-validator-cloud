@@ -380,36 +380,6 @@
       margin-bottom: 15px;
     }
 
-    .client-tab {
-      padding: 10px 15px;
-      background: #f0f0f0;
-      border: none;
-      border-bottom: 3px solid transparent;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      white-space: nowrap;
-      transition: all 0.2s;
-      color: #666;
-    }
-
-    .client-tab:hover {
-      background: #e0e0e0;
-    }
-
-    .client-tab.active {
-      background: #667eea;
-      color: white;
-      border-bottom-color: #667eea;
-    }
-
-    .client-tab .tab-count {
-      font-size: 11px;
-      opacity: 0.8;
-      margin-left: 5px;
-    }
-    }
-
     .filter-section input {
       flex: 1;
       padding: 8px 12px;
@@ -543,11 +513,6 @@
           </select>
         </div>
 
-        <!-- Tabs de clientes especiales -->
-        <div id="clientTabs" style="display: none; margin-bottom: 15px; border-bottom: 2px solid #eee; overflow-x: auto;">
-          <!-- Se generan dinámicamente -->
-        </div>
-
         <div class="results-container scrollbar" id="resultsContainer">
           <div class="empty-state">
             <div class="empty-state-icon">📋</div>
@@ -655,13 +620,12 @@
       }
 
       showLoading(true);
-      updateStatus('loading', '📥 Descargando NOTAS_DE_RECUPERO desde GitHub...');
+      updateStatus('loading', '🔄 Descargando datos maestros desde GitHub...');
 
       try {
-        // PASO 1: Descargar NOTAS DE RECUPERO desde GitHub
+        // Descargar NOTAS DE RECUPERO
         const notasUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/NOTAS_DE_RECUPERO.xlsx`;
         const notasProxyUrl = `${CORS_PROXY}${encodeURIComponent(notasUrl)}`;
-        
         const notasRes = await fetch(notasProxyUrl);
         if (!notasRes.ok) throw new Error(`No se pudo descargar NOTAS_DE_RECUPERO.xlsx (Status: ${notasRes.status})`);
         
@@ -669,70 +633,47 @@
         const notasWorkbook = XLSX.read(notasBuffer);
         const notasData = XLSX.utils.sheet_to_json(notasWorkbook.Sheets['Hoja2'] || notasWorkbook.Sheets[notasWorkbook.SheetNames[0]]);
 
-        // PASO 2: Procesar NOTAS para obtener clientes especiales
+        // Procesar NOTAS para obtener clientes especiales
         appState.specialClients = procesarNotasRecuperó(notasData);
-        console.log('Clientes especiales encontrados:', appState.specialClients.length);
 
-        // PASO 3: Procesar cada cliente especial
-        const resultadosPorCliente = {};
-        const totalClientes = appState.specialClients.length;
+        updateStatus('loading', '🔄 Descargando Excel de clientes...');
 
-        for (let i = 0; i < appState.specialClients.length; i++) {
-          const cliente = appState.specialClients[i];
-          updateStatus('loading', `📊 Procesando cliente ${i + 1}/${totalClientes}: ${cliente.cliente_nombre}...`);
-
-          // PASO 3A: Descargar Excel del cliente específico
-          const clienteNormalizado = cliente.cliente_nombre
-            .toLowerCase()
-            .replace(/\s+/g, '_')
-            .replace(/[^\w_]/g, '');
-
-          const clientFileName = `${clienteNormalizado}.xlsx`;
-          const clientUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/clientes/${clientFileName}`;
-          const clientProxyUrl = `${CORS_PROXY}${encodeURIComponent(clientUrl)}`;
-
-          let datosCliente = [];
+        // Descargar Excel de clientes (simular descarga de los 18)
+        // Por ahora descargamos uno para demostración
+        const clientNames = ['vigliocco', 'alvear', 'del_sud']; // Ejemplo, en producción serían los 18
+        
+        for (const clientName of clientNames) {
           try {
+            const clientUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/clientes/${clientName}.xlsx`;
+            const clientProxyUrl = `${CORS_PROXY}${encodeURIComponent(clientUrl)}`;
             const clientRes = await fetch(clientProxyUrl);
             if (clientRes.ok) {
               const clientBuffer = await clientRes.arrayBuffer();
               const clientWorkbook = XLSX.read(clientBuffer);
-              datosCliente = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
-            } else {
-              console.warn(`No se pudo descargar ${clientFileName} (Status: ${clientRes.status})`);
+              const clientData = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
+              
+              appState.clientsData[clientName.toUpperCase()] = {
+                nombre: clientName,
+                productos: clientData
+              };
             }
           } catch (e) {
-            console.warn(`Error descargando ${clientFileName}:`, e.message);
+            console.warn(`No se pudo descargar ${clientName}.xlsx:`, e);
           }
-
-          // PASO 3B: Filtrar transfers de este cliente específico
-          const transfersDelCliente = appState.transfers.filter(transfer => {
-            const nombreTransfer = (transfer['Cliente'] || '').toString().trim().toUpperCase();
-            const nombreCliente = cliente.cliente_nombre.toUpperCase();
-            return nombreTransfer === nombreCliente;
-          });
-
-          // PASO 3C: Validar transfers del cliente
-          const validaciones = [];
-          for (const transfer of transfersDelCliente) {
-            const validacion = await validateTransferForClient(transfer, cliente, datosCliente);
-            validaciones.push(validacion);
-          }
-
-          // PASO 3D: Guardar resultados del cliente
-          resultadosPorCliente[cliente.cliente_nombre] = {
-            cliente_nombre: cliente.cliente_nombre,
-            total: validaciones.length,
-            ok: validaciones.filter(v => v.estado === 'OK').length,
-            advertencia: validaciones.filter(v => v.estado === 'ADVERTENCIA').length,
-            error: validaciones.filter(v => v.estado === 'ERROR').length,
-            validaciones: validaciones
-          };
         }
 
-        appState.resultadosPorCliente = resultadosPorCliente;
-        displayResultsByClient(resultadosPorCliente);
-        updateStatus('success', '✅ Validación completada por cliente');
+        updateStatus('loading', '🔄 Validando transfers...');
+
+        // Validar cada transfer
+        const resultados = [];
+        for (const transfer of appState.transfers) {
+          const validacion = await validateTransfer(transfer);
+          resultados.push(validacion);
+        }
+
+        appState.filteredTransfers = resultados;
+        displayResults(resultados);
+        updateStatus('success', '✅ Validación completada');
 
       } catch (error) {
         console.error('Error:', error);
@@ -1009,238 +950,7 @@
       return null;
     }
 
-    async function validateTransferForClient(transfer, cliente, datosCliente) {
-      try {
-        const nro_transfer = transfer['Nro. Transfer'] || transfer['Numero'] || '';
-        const laboratorio = transfer['Laboratorio'] || transfer['Lab'] || '';
-        const cod_barra = transfer['Cod. Barra'] || transfer['EAN'] || '';
-        const producto = transfer['Producto'] || transfer['Desc'] || '';
-        const cantidad = parseInt(transfer['Cantidad'] || 0);
-
-        // Verificar laboratorio
-        const labsPermitidos = cliente.laboratorios;
-        const todosTodos = labsPermitidos.includes('TODOS LOS LABORATORIOS') ||
-                          labsPermitidos.some(lab => lab.toLowerCase().includes('todos'));
-
-        if (!todosTodos) {
-          const labMatch = findLaboratorioMatch(laboratorio, labsPermitidos);
-          if (!labMatch) {
-            return {
-              nro_transfer,
-              cliente: cliente.cliente_nombre,
-              laboratorio,
-              producto,
-              ean: cod_barra,
-              cantidad_real: cantidad,
-              cantidad_esperada: null,
-              estado: 'ERROR',
-              mensaje: `Laboratorio "${laboratorio}" no permitido para este cliente`,
-              diferencia_pct: null
-            };
-          }
-        }
-
-        // Si no tenemos datos del cliente, no podemos comparar
-        if (!datosCliente || datosCliente.length === 0) {
-          return {
-            nro_transfer,
-            cliente: cliente.cliente_nombre,
-            laboratorio,
-            producto,
-            ean: cod_barra,
-            cantidad_real: cantidad,
-            cantidad_esperada: null,
-            estado: 'PENDIENTE',
-            mensaje: `Datos del cliente no disponibles para comparación`,
-            diferencia_pct: null
-          };
-        }
-
-        // Buscar producto en datos del cliente
-        const productoMatch = findProductoMatch(cod_barra, producto, laboratorio, datosCliente);
-
-        if (!productoMatch) {
-          return {
-            nro_transfer,
-            cliente: cliente.cliente_nombre,
-            laboratorio,
-            producto,
-            ean: cod_barra,
-            cantidad_real: cantidad,
-            cantidad_esperada: null,
-            estado: 'ERROR',
-            mensaje: `Producto no encontrado en orden del cliente`,
-            diferencia_pct: null
-          };
-        }
-
-        // Comparar cantidades
-        const cantidadEsperada = parseInt(productoMatch['C'] || productoMatch['Cantidad'] || 0);
-        const diferencia = Math.abs(cantidad - cantidadEsperada);
-        const diferenciaPct = cantidadEsperada > 0 ? (diferencia / cantidadEsperada) : 0;
-
-        let estado, mensaje;
-
-        if (diferencia === 0) {
-          estado = 'OK';
-          mensaje = '✓ Cantidad coincide exactamente. Listo para facturar.';
-        } else if (diferenciaPct <= TOLERANCE_WARNING) {
-          estado = 'OK_APROX';
-          mensaje = `⚠ Diferencia menor (${(diferenciaPct * 100).toFixed(1)}%). Revisar pero probablemente OK.`;
-        } else if (diferenciaPct <= TOLERANCE_ERROR) {
-          estado = 'ADVERTENCIA';
-          mensaje = `⚠ Diferencia: ${diferencia} unidades (${(diferenciaPct * 100).toFixed(1)}%). Revisar con cliente.`;
-        } else {
-          estado = 'ERROR';
-          mensaje = `✗ Diferencia GRAVE: ${diferencia} unidades (${(diferenciaPct * 100).toFixed(1)}%). Bloquear facturación.`;
-        }
-
-        return {
-          nro_transfer,
-          cliente: cliente.cliente_nombre,
-          laboratorio,
-          producto: productoMatch['Producto'] || productoMatch['Nombre'] || producto,
-          ean: cod_barra,
-          cantidad_real: cantidad,
-          cantidad_esperada: cantidadEsperada,
-          diferencia_pct: Math.round(diferenciaPct * 10000) / 100,
-          diferencia_unidades: diferencia,
-          estado,
-          mensaje
-        };
-
-      } catch (error) {
-        console.error('Error validando transfer:', error);
-        return {
-          nro_transfer: transfer['Nro. Transfer'] || '?',
-          cliente: cliente.cliente_nombre,
-          estado: 'ERROR',
-          mensaje: `Error: ${error.message}`,
-          cantidad_real: 0,
-          cantidad_esperada: null,
-          diferencia_pct: null
-        };
-      }
-    }
-
-    function displayResultsByClient(resultadosPorCliente) {
-      const container = document.getElementById('resultsContainer');
-      const tabsDiv = document.getElementById('clientTabs');
-      
-      // Mostrar tabs
-      tabsDiv.innerHTML = '';
-      tabsDiv.style.display = 'flex';
-      
-      const clientes = Object.keys(resultadosPorCliente);
-      
-      clientes.forEach((clienteName, index) => {
-        const stats = resultadosPorCliente[clienteName];
-        const btn = document.createElement('button');
-        btn.className = 'client-tab' + (index === 0 ? ' active' : '');
-        btn.innerHTML = `${clienteName} <span class="tab-count">(${stats.total})</span>`;
-        btn.onclick = () => selectClientTab(clienteName, resultadosPorCliente);
-        tabsDiv.appendChild(btn);
-      });
-
-      // Mostrar primer cliente
-      if (clientes.length > 0) {
-        selectClientTab(clientes[0], resultadosPorCliente);
-      }
-
-      // Actualizar stats globales
-      updateGlobalStats(resultadosPorCliente);
-    }
-
-    function selectClientTab(clientName, resultadosPorCliente) {
-      // Marcar tab activo
-      document.querySelectorAll('.client-tab').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.textContent.includes(clientName)) {
-          btn.classList.add('active');
-        }
-      });
-
-      // Mostrar resultados del cliente
-      const stats = resultadosPorCliente[clientName];
-      const container = document.getElementById('resultsContainer');
-
-      if (stats.validaciones.length === 0) {
-        container.innerHTML = '<div class="no-results">Sin transfers para este cliente</div>';
-        return;
-      }
-
-      container.innerHTML = stats.validaciones.map(v => `
-        <div class="result-card result-${v.estado.toLowerCase()}">
-          <div class="result-header">
-            <span class="result-status">${getStatusIcon(v.estado)}</span>
-            <span class="result-nro">#${v.nro_transfer}</span>
-            <span class="result-producto">${v.producto}</span>
-          </div>
-          <div class="result-details">
-            <div class="result-detail">
-              <span class="label">Cliente:</span>
-              <span>${v.cliente}</span>
-            </div>
-            <div class="result-detail">
-              <span class="label">Laboratorio:</span>
-              <span>${v.laboratorio}</span>
-            </div>
-            <div class="result-detail">
-              <span class="label">EAN:</span>
-              <span>${v.ean || '-'}</span>
-            </div>
-          </div>
-          <div class="result-quantities">
-            <div class="cant">
-              <span class="cant-label">Esperado</span>
-              <span class="cant-value">${v.cantidad_esperada || '-'}</span>
-            </div>
-            <div class="cant">
-              <span class="cant-label">Recibido</span>
-              <span class="cant-value">${v.cantidad_real}</span>
-            </div>
-            ${v.diferencia_pct !== null ? `
-            <div class="cant">
-              <span class="cant-label">Diferencia</span>
-              <span class="cant-value ${v.diferencia_pct > 0 ? 'cant-diferencia' : ''}">${v.diferencia_pct || 0}%</span>
-            </div>
-            ` : ''}
-          </div>
-          <div class="result-mensaje">${v.mensaje}</div>
-        </div>
-      `).join('');
-    }
-
-    function updateGlobalStats(resultadosPorCliente) {
-      let totalTransfers = 0;
-      let okCount = 0;
-      let warningCount = 0;
-      let errorCount = 0;
-
-      Object.values(resultadosPorCliente).forEach(stats => {
-        totalTransfers += stats.total;
-        okCount += stats.ok;
-        warningCount += stats.advertencia;
-        errorCount += stats.error;
-      });
-
-      document.getElementById('statTotal').textContent = totalTransfers;
-      document.getElementById('statOk').textContent = okCount;
-      document.getElementById('statWarning').textContent = warningCount;
-      document.getElementById('statError').textContent = errorCount;
-    }
-
-    function getStatusIcon(estado) {
-      const icons = {
-        'OK': '✅',
-        'OK_APROX': '✓',
-        'ADVERTENCIA': '⚠️',
-        'ERROR': '❌',
-        'DESCARTADO': '⊘',
-        'PENDIENTE': '⏳'
-      };
-      return icons[estado] || '?';
-    }
+    function displayResults(resultados) {
       const stats = {
         total: resultados.length,
         ok: resultados.filter(r => r.estado === 'OK').length,
