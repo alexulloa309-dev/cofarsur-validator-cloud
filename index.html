@@ -624,7 +624,7 @@
       try {
         // Descargar NOTAS DE RECUPERO
         const notasRes = await fetch(
-          `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/NOTAS_DE_RECUPERO-LABORATORIOS.xlsx`
+          `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/NOTAS_DE_RECUPERO.xlsx`
         );
         if (!notasRes.ok) throw new Error('No se pudo descargar NOTAS_DE_RECUPERO.xlsx');
         
