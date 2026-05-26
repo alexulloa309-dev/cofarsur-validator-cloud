@@ -660,7 +660,7 @@
         updateStatus('loading', '🔄 Descargando clientes especiales desde GitHub...');
         addDebugLog(`📥 Descargando: ${NOTAS_FILE}`);
 
-        const notasUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/${NOTAS_FILE}`;
+        const notasUrl = `${GITHUB_RAW_URL}/${NOTAS_FILE}`;
         addDebugLog(`URL: ${notasUrl}`);
 
         const notasRes = await fetch(notasUrl);
