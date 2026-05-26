@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Validador de Transfers - Cofarsur</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/string-similarity/4.0.4/stringSimilarity.js"></script>
   <style>
@@ -1160,20 +1161,110 @@
       event.target.closest('button').style.background = '#667eea';
       event.target.closest('button').style.color = 'white';
       
-      // Mostrar resultados del cliente
+      // Obtener contenedor
       const container = document.getElementById('resultsContainer');
-      const tabsDiv = container.querySelector('div:first-child');
       
-      // Limpiar resultados previos
-      const resultDiv = document.createElement('div');
-      resultDiv.id = 'clientResults';
+      // LIMPIAR COMPLETAMENTE: Eliminar tabs y resultados viejos
+      container.innerHTML = '';
       
-      selectClienteTabInterno(clientName, appState.resultadosPorCliente, resultDiv);
+      // Recrear tabs (pero solo mostrar el seleccionado)
+      const resultadosPorCliente = appState.resultadosPorCliente;
+      const clientes = Object.keys(resultadosPorCliente);
       
-      // Reemplazar resultados
-      const oldResults = container.querySelector('#clientResults');
-      if (oldResults) oldResults.remove();
-      container.appendChild(resultDiv);
+      let tabsHTML = '<div style="display: flex; gap: 5px; margin-bottom: 15px; overflow-x: auto; border-bottom: 2px solid #eee; padding-bottom: 10px;">';
+      
+      clientes.forEach((cliente) => {
+        const stats = resultadosPorCliente[cliente];
+        const isActive = cliente === clientName;
+        tabsHTML += `
+          <button onclick="selectClienteTab('${cliente}', event)" 
+                  class="client-tab-btn ${isActive ? 'active' : ''}"
+                  style="padding: 8px 15px; background: ${isActive ? '#667eea' : '#f0f0f0'}; color: ${isActive ? 'white' : '#666'}; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; white-space: nowrap;">
+            ${cliente} <span style="font-size: 11px; opacity: 0.8;">(${stats.total})</span>
+          </button>
+        `;
+      });
+      
+      tabsHTML += '</div>';
+      container.innerHTML = tabsHTML;
+      
+      // MOSTRAR SOLO EL CLIENTE SELECCIONADO
+      const stats = resultadosPorCliente[clientName];
+      
+      if (!stats || stats.validaciones.length === 0) {
+        container.innerHTML += '<div class="no-results">Sin transfers para este cliente</div>';
+        return;
+      }
+
+      let html = '<div style="margin-top: 15px;">';
+      
+      stats.validaciones.forEach(v => {
+        const statusColor = {
+          'OK': '#28a745',
+          'OK_APROX': '#17a2b8',
+          'ADVERTENCIA': '#ffc107',
+          'ERROR': '#dc3545',
+          'PENDIENTE': '#6c757d'
+        };
+        
+        const statusIcon = {
+          'OK': '✅',
+          'OK_APROX': '✓',
+          'ADVERTENCIA': '⚠️',
+          'ERROR': '❌',
+          'PENDIENTE': '⏳'
+        };
+
+        html += `
+          <div style="border-left: 4px solid ${statusColor[v.estado]}; background: #f9f9f9; padding: 15px; margin-bottom: 10px; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-weight: 600; font-size: 14px;">
+                ${statusIcon[v.estado]} #${v.nro_transfer} - ${v.producto}
+              </span>
+              <span style="background: ${statusColor[v.estado]}; color: white; padding: 4px 8px; border-radius: 3px; font-size: 11px; font-weight: 600;">
+                ${v.estado}
+              </span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 10px; font-size: 12px;">
+              <div>
+                <span style="color: #666; font-weight: 600;">Laboratorio:</span><br>
+                ${v.laboratorio}
+              </div>
+              <div>
+                <span style="color: #666; font-weight: 600;">EAN:</span><br>
+                ${v.ean || '-'}
+              </div>
+              <div>
+                <span style="color: #666; font-weight: 600;">Diferencia:</span><br>
+                ${v.diferencia_pct !== null ? v.diferencia_pct + '%' : '-'}
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px; font-size: 12px; background: white; padding: 10px; border-radius: 4px;">
+              <div>
+                <span style="color: #666; font-weight: 600;">Esperado:</span><br>
+                <span style="font-size: 16px; font-weight: 700; color: #667eea;">
+                  ${v.cantidad_esperada !== null ? v.cantidad_esperada : '-'}
+                </span>
+              </div>
+              <div>
+                <span style="color: #666; font-weight: 600;">Recibido:</span><br>
+                <span style="font-size: 16px; font-weight: 700; color: ${v.cantidad_real === v.cantidad_esperada ? '#28a745' : '#dc3545'};">
+                  ${v.cantidad_real}
+                </span>
+              </div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 4px; font-size: 12px; font-style: italic; color: #666;">
+              ${v.mensaje}
+            </div>
+          </div>
+        `;
+      });
+      
+      html += '</div>';
+      container.innerHTML += html;
     };
 
     function findClientMatch(clienteName, specialClients) {
