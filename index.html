@@ -666,18 +666,9 @@
 
         updateStatus('loading', '🔄 Validando transfers...');
 
-        // FILTRAR: Solo transfers de clientes en NOTAS
-        const transfersFiltrados = appState.transfers.filter(transfer => {
-          const cliente = transfer['Cliente'] || '';
-          const match = findClientMatch(cliente, appState.specialClients);
-          return match !== null;
-        });
-
-        console.log(`Transfers totales: ${appState.transfers.length}, Filtrados (en NOTAS): ${transfersFiltrados.length}`);
-
-        // Validar cada transfer filtrado
+        // Validar cada transfer
         const resultados = [];
-        for (const transfer of transfersFiltrados) {
+        for (const transfer of appState.transfers) {
           const validacion = await validateTransfer(transfer);
           resultados.push(validacion);
         }
@@ -696,45 +687,39 @@
 
     function procesarNotasRecuperó(data) {
       const clients = [];
-      
-      // Extraer clientes únicos de CADENA (ignorando NaN/vacíos)
-      for (const row of data) {
-        const cadena = row['CADENA '] || row['CADENA'];
-        
-        if (cadena && cadena.toString().trim() && cadena.toString().trim() !== 'NaN') {
-          const clienteName = cadena.toString().trim();
-          
-          // Evitar duplicados
-          if (!clients.some(c => c.cliente_nombre.toUpperCase() === clienteName.toUpperCase())) {
-            clients.push({
-              cliente_nombre: clienteName,
-              laboratorios: []
-            });
-          }
-        }
-      }
-      
-      // Agregar laboratorios a cada cliente
+      let currentClient = null;
+      let laboratorios = [];
+
       for (const row of data) {
         const cadena = row['CADENA '] || row['CADENA'];
         const laboratorio = row['LABORATORIO '] || row['LABORATORIO'];
-        
+
         if (cadena && cadena.toString().trim()) {
-          const clientName = cadena.toString().trim();
-          const client = clients.find(c => c.cliente_nombre.toUpperCase() === clientName.toUpperCase());
-          
-          if (client && laboratorio && laboratorio.toString().trim()) {
-            const lab = laboratorio.toString().trim();
-            if (!client.laboratorios.includes(lab)) {
-              client.laboratorios.push(lab);
-            }
+          if (currentClient && laboratorios.length > 0) {
+            clients.push({
+              cliente_nombre: currentClient,
+              laboratorios: laboratorios.slice()
+            });
+          }
+          currentClient = cadena.toString().trim();
+          laboratorios = [];
+        }
+
+        if (laboratorio && laboratorio.toString().trim()) {
+          const lab = laboratorio.toString().trim();
+          if (!laboratorios.includes(lab)) {
+            laboratorios.push(lab);
           }
         }
       }
-      
-      console.log('Clientes especiales cargados:', clients.length);
-      console.log('Clientes:', clients.map(c => c.cliente_nombre).join(', '));
-      
+
+      if (currentClient && laboratorios.length > 0) {
+        clients.push({
+          cliente_nombre: currentClient,
+          laboratorios: laboratorios
+        });
+      }
+
       return clients;
     }
 
