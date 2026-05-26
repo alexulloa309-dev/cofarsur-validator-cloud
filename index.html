@@ -620,58 +620,90 @@
       }
 
       showLoading(true);
-      updateStatus('loading', '🔄 Descargando datos maestros desde GitHub...');
+      updateStatus('loading', '📥 Descargando NOTAS_DE_RECUPERO...');
 
       try {
-        // Descargar NOTAS DE RECUPERO
+        // PASO 1: Cargar NOTAS DE RECUPERO
         const notasUrl = `${DATA_URL}/NOTAS_DE_RECUPERO.xlsx`;
         const notasRes = await fetch(notasUrl);
-        if (!notasRes.ok) throw new Error(`No se pudo descargar NOTAS_DE_RECUPERO.xlsx (Status: ${notasRes.status})`);
+        if (!notasRes.ok) throw new Error(`No se pudo descargar NOTAS_DE_RECUPERO.xlsx`);
         
         const notasBuffer = await notasRes.arrayBuffer();
         const notasWorkbook = XLSX.read(notasBuffer);
         const notasData = XLSX.utils.sheet_to_json(notasWorkbook.Sheets['Hoja2'] || notasWorkbook.Sheets[notasWorkbook.SheetNames[0]]);
 
-        // Procesar NOTAS para obtener clientes especiales
+        // PASO 2: Procesar NOTAS para obtener clientes especiales (en orden)
         appState.specialClients = procesarNotasRecuperó(notasData);
+        console.log(`✅ Clientes especiales encontrados: ${appState.specialClients.length}`);
+        console.log('Orden de procesamiento:', appState.specialClients.map(c => c.cliente_nombre).join(', '));
 
-        updateStatus('loading', '🔄 Descargando Excel de clientes...');
+        // PASO 3: Procesar CADA cliente especial (uno por uno, en orden)
+        const resultadosPorCliente = {};
+        const totalClientes = appState.specialClients.length;
 
-        // Descargar Excel de clientes (simular descarga de los 18)
-        // Por ahora descargamos uno para demostración
-        const clientNames = ['vigliocco', 'alvear', 'del_sud']; // Ejemplo, en producción serían los 18
-        
-        for (const clientName of clientNames) {
+        for (let i = 0; i < appState.specialClients.length; i++) {
+          const clienteEspecial = appState.specialClients[i];
+          const clienteNombre = clienteEspecial.cliente_nombre;
+          
+          updateStatus('loading', `📊 Procesando cliente ${i + 1}/${totalClientes}: ${clienteNombre}...`);
+          console.log(`\n🔍 Procesando: ${clienteNombre}`);
+
+          // PASO 3A: Normalizar nombre para buscar archivo
+          const clienteNormalizado = clienteNombre
+            .toLowerCase()
+            .replace(/\s+/g, '_')
+            .replace(/[^\w_]/g, '');
+          
+          // PASO 3B: Cargar Excel del cliente
+          const clientUrl = `${DATA_URL}/${clienteNombre}.xlsx`;
+          let datosCliente = [];
+          
           try {
-            const clientUrl = `${DATA_URL}/${clientName}.xlsx`;
             const clientRes = await fetch(clientUrl);
             if (clientRes.ok) {
               const clientBuffer = await clientRes.arrayBuffer();
               const clientWorkbook = XLSX.read(clientBuffer);
-              const clientData = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
-              
-              appState.clientsData[clientName.toUpperCase()] = {
-                nombre: clientName,
-                productos: clientData
-              };
+              datosCliente = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
+              console.log(`✓ Datos del cliente cargados: ${datosCliente.length} productos`);
+            } else {
+              console.warn(`⚠️ No se pudo cargar Excel de ${clienteNombre}`);
             }
           } catch (e) {
-            console.warn(`No se pudo descargar ${clientName}.xlsx:`, e);
+            console.warn(`⚠️ Error cargando ${clienteNombre}:`, e.message);
           }
+
+          // PASO 3C: Buscar TODOS los transfers de este cliente en el Excel diario
+          const transfersDelCliente = appState.transfers.filter(transfer => {
+            const nombreTransfer = (transfer['Cliente'] || '').toString().trim();
+            return nombreTransfer.toUpperCase() === clienteNombre.toUpperCase();
+          });
+          
+          console.log(`📦 Transfers encontrados para ${clienteNombre}: ${transfersDelCliente.length}`);
+
+          // PASO 3D: Validar cada transfer del cliente contra su Excel
+          const validacionesDelCliente = [];
+          for (const transfer of transfersDelCliente) {
+            const validacion = await validateTransferForCliente(transfer, clienteEspecial, datosCliente);
+            validacionesDelCliente.push(validacion);
+          }
+
+          // PASO 3E: Guardar resultados del cliente
+          resultadosPorCliente[clienteNombre] = {
+            cliente_nombre: clienteNombre,
+            total: validacionesDelCliente.length,
+            ok: validacionesDelCliente.filter(v => v.estado === 'OK').length,
+            advertencia: validacionesDelCliente.filter(v => v.estado === 'ADVERTENCIA').length,
+            error: validacionesDelCliente.filter(v => v.estado === 'ERROR').length,
+            validaciones: validacionesDelCliente
+          };
+
+          console.log(`✅ ${clienteNombre}: ${validacionesDelCliente.length} transfers (OK: ${resultadosPorCliente[clienteNombre].ok}, ⚠️: ${resultadosPorCliente[clienteNombre].advertencia}, ❌: ${resultadosPorCliente[clienteNombre].error})`);
         }
 
-        updateStatus('loading', '🔄 Validando transfers...');
-
-        // Validar cada transfer
-        const resultados = [];
-        for (const transfer of appState.transfers) {
-          const validacion = await validateTransfer(transfer);
-          resultados.push(validacion);
-        }
-
-        appState.filteredTransfers = resultados;
-        displayResults(resultados);
-        updateStatus('success', '✅ Validación completada');
+        // PASO 4: Mostrar resultados finales
+        appState.resultadosPorCliente = resultadosPorCliente;
+        displayResultsByCliente(resultadosPorCliente);
+        updateStatus('success', '✅ Validación completada por cliente');
 
       } catch (error) {
         console.error('Error:', error);
@@ -857,7 +889,271 @@
       }
     }
 
-    function findClientMatch(clienteName, specialClients) {
+    async function validateTransferForCliente(transfer, clienteEspecial, datosCliente) {
+      try {
+        const nro_transfer = transfer['Nro. Transfer'] || transfer['Numero'] || '';
+        const laboratorio = transfer['Laboratorio'] || transfer['Lab'] || '';
+        const cod_barra = transfer['Cod. Barra'] || transfer['EAN'] || '';
+        const producto = transfer['Producto'] || transfer['Desc'] || '';
+        const cantidad = parseInt(transfer['Cantidad'] || 0);
+
+        // PASO 1: Verificar laboratorio permitido
+        const labsPermitidos = clienteEspecial.laboratorios;
+        const todosTodos = labsPermitidos.includes('TODOS LOS LABORATORIOS') ||
+                          labsPermitidos.some(lab => lab.toLowerCase().includes('todos'));
+
+        if (!todosTodos) {
+          const labMatch = findLaboratorioMatch(laboratorio, labsPermitidos);
+          if (!labMatch) {
+            return {
+              nro_transfer,
+              cliente: clienteEspecial.cliente_nombre,
+              laboratorio,
+              producto,
+              ean: cod_barra,
+              cantidad_real: cantidad,
+              cantidad_esperada: null,
+              estado: 'ERROR',
+              mensaje: `Laboratorio "${laboratorio}" no permitido para este cliente`,
+              diferencia_pct: null
+            };
+          }
+        }
+
+        // PASO 2: Si no tenemos datos del cliente, no podemos validar cantidad
+        if (!datosCliente || datosCliente.length === 0) {
+          return {
+            nro_transfer,
+            cliente: clienteEspecial.cliente_nombre,
+            laboratorio,
+            producto,
+            ean: cod_barra,
+            cantidad_real: cantidad,
+            cantidad_esperada: null,
+            estado: 'PENDIENTE',
+            mensaje: `Sin datos del cliente para comparar cantidad`,
+            diferencia_pct: null
+          };
+        }
+
+        // PASO 3: Buscar producto en el Excel del cliente
+        const productoMatch = findProductoMatch(cod_barra, producto, laboratorio, datosCliente);
+
+        if (!productoMatch) {
+          return {
+            nro_transfer,
+            cliente: clienteEspecial.cliente_nombre,
+            laboratorio,
+            producto,
+            ean: cod_barra,
+            cantidad_real: cantidad,
+            cantidad_esperada: null,
+            estado: 'ERROR',
+            mensaje: `Producto no encontrado en orden del cliente`,
+            diferencia_pct: null
+          };
+        }
+
+        // PASO 4: Comparar cantidades
+        const cantidadEsperada = parseInt(productoMatch['C'] || productoMatch['Cantidad'] || 0);
+        const diferencia = Math.abs(cantidad - cantidadEsperada);
+        const diferenciaPct = cantidadEsperada > 0 ? (diferencia / cantidadEsperada) : 0;
+
+        let estado, mensaje;
+
+        if (diferencia === 0) {
+          estado = 'OK';
+          mensaje = '✓ Cantidad coincide exactamente. Listo para facturar.';
+        } else if (diferenciaPct <= TOLERANCE_WARNING) {
+          estado = 'OK_APROX';
+          mensaje = `⚠ Diferencia menor (${(diferenciaPct * 100).toFixed(1)}%). Probablemente OK.`;
+        } else if (diferenciaPct <= TOLERANCE_ERROR) {
+          estado = 'ADVERTENCIA';
+          mensaje = `⚠ Diferencia: ${diferencia} unidades (${(diferenciaPct * 100).toFixed(1)}%). Revisar con cliente.`;
+        } else {
+          estado = 'ERROR';
+          mensaje = `✗ Diferencia GRAVE: ${diferencia} unidades (${(diferenciaPct * 100).toFixed(1)}%). Bloquear facturación.`;
+        }
+
+        return {
+          nro_transfer,
+          cliente: clienteEspecial.cliente_nombre,
+          laboratorio,
+          producto: productoMatch['Producto'] || productoMatch['Nombre'] || producto,
+          ean: cod_barra,
+          cantidad_real: cantidad,
+          cantidad_esperada: cantidadEsperada,
+          diferencia_pct: Math.round(diferenciaPct * 10000) / 100,
+          diferencia_unidades: diferencia,
+          estado,
+          mensaje
+        };
+
+      } catch (error) {
+        console.error('Error validando transfer:', error);
+        return {
+          nro_transfer: transfer['Nro. Transfer'] || '?',
+          cliente: transfer['Cliente'] || '?',
+          estado: 'ERROR',
+          mensaje: `Error: ${error.message}`,
+          cantidad_real: 0,
+          cantidad_esperada: null,
+          diferencia_pct: null
+        };
+      }
+    }
+
+    function displayResultsByCliente(resultadosPorCliente) {
+      const container = document.getElementById('resultsContainer');
+      const clientes = Object.keys(resultadosPorCliente);
+      
+      if (clientes.length === 0) {
+        container.innerHTML = '<div class="no-results">No hay clientes especiales para mostrar</div>';
+        return;
+      }
+
+      // Mostrar tabs de clientes
+      let tabsHTML = '<div style="display: flex; gap: 5px; margin-bottom: 15px; overflow-x: auto; border-bottom: 2px solid #eee; padding-bottom: 10px;">';
+      
+      clientes.forEach((clientName, idx) => {
+        const stats = resultadosPorCliente[clientName];
+        tabsHTML += `
+          <button onclick="selectClienteTab('${clientName}', event)" 
+                  class="client-tab-btn ${idx === 0 ? 'active' : ''}"
+                  style="padding: 8px 15px; background: ${idx === 0 ? '#667eea' : '#f0f0f0'}; color: ${idx === 0 ? 'white' : '#666'}; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; white-space: nowrap;">
+            ${clientName} <span style="font-size: 11px; opacity: 0.8;">(${stats.total})</span>
+          </button>
+        `;
+      });
+      
+      tabsHTML += '</div>';
+      
+      // Insertar tabs antes de los resultados
+      container.innerHTML = tabsHTML;
+      
+      // Mostrar primer cliente
+      selectClienteTabInterno(clientes[0], resultadosPorCliente, container);
+      
+      // Actualizar stats globales
+      let totalGlobal = 0, okGlobal = 0, advGlobal = 0, errGlobal = 0;
+      Object.values(resultadosPorCliente).forEach(stats => {
+        totalGlobal += stats.total;
+        okGlobal += stats.ok;
+        advGlobal += stats.advertencia;
+        errGlobal += stats.error;
+      });
+      
+      document.getElementById('statTotal').textContent = totalGlobal;
+      document.getElementById('statOk').textContent = okGlobal;
+      document.getElementById('statWarning').textContent = advGlobal;
+      document.getElementById('statError').textContent = errGlobal;
+    }
+
+    function selectClienteTabInterno(clientName, resultadosPorCliente, container) {
+      const stats = resultadosPorCliente[clientName];
+      
+      if (!stats || stats.validaciones.length === 0) {
+        container.innerHTML += '<div class="no-results">Sin transfers para este cliente</div>';
+        return;
+      }
+
+      let html = '<div style="margin-top: 15px;">';
+      
+      stats.validaciones.forEach(v => {
+        const statusColor = {
+          'OK': '#28a745',
+          'OK_APROX': '#17a2b8',
+          'ADVERTENCIA': '#ffc107',
+          'ERROR': '#dc3545',
+          'PENDIENTE': '#6c757d'
+        };
+        
+        const statusIcon = {
+          'OK': '✅',
+          'OK_APROX': '✓',
+          'ADVERTENCIA': '⚠️',
+          'ERROR': '❌',
+          'PENDIENTE': '⏳'
+        };
+
+        html += `
+          <div style="border-left: 4px solid ${statusColor[v.estado]}; background: #f9f9f9; padding: 15px; margin-bottom: 10px; border-radius: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-weight: 600; font-size: 14px;">
+                ${statusIcon[v.estado]} #${v.nro_transfer} - ${v.producto}
+              </span>
+              <span style="background: ${statusColor[v.estado]}; color: white; padding: 4px 8px; border-radius: 3px; font-size: 11px; font-weight: 600;">
+                ${v.estado}
+              </span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 10px; font-size: 12px;">
+              <div>
+                <span style="color: #666; font-weight: 600;">Laboratorio:</span><br>
+                ${v.laboratorio}
+              </div>
+              <div>
+                <span style="color: #666; font-weight: 600;">EAN:</span><br>
+                ${v.ean || '-'}
+              </div>
+              <div>
+                <span style="color: #666; font-weight: 600;">Diferencia:</span><br>
+                ${v.diferencia_pct !== null ? v.diferencia_pct + '%' : '-'}
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px; font-size: 12px; background: white; padding: 10px; border-radius: 4px;">
+              <div>
+                <span style="color: #666; font-weight: 600;">Esperado:</span><br>
+                <span style="font-size: 16px; font-weight: 700; color: #667eea;">
+                  ${v.cantidad_esperada !== null ? v.cantidad_esperada : '-'}
+                </span>
+              </div>
+              <div>
+                <span style="color: #666; font-weight: 600;">Recibido:</span><br>
+                <span style="font-size: 16px; font-weight: 700; color: ${v.cantidad_real === v.cantidad_esperada ? '#28a745' : '#dc3545'};">
+                  ${v.cantidad_real}
+                </span>
+              </div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 4px; font-size: 12px; font-style: italic; color: #666;">
+              ${v.mensaje}
+            </div>
+          </div>
+        `;
+      });
+      
+      html += '</div>';
+      container.innerHTML += html;
+    }
+
+    window.selectClienteTab = function(clientName, event) {
+      if (event) event.preventDefault();
+      
+      // Actualizar botones activos
+      document.querySelectorAll('.client-tab-btn').forEach(btn => {
+        btn.style.background = '#f0f0f0';
+        btn.style.color = '#666';
+      });
+      event.target.closest('button').style.background = '#667eea';
+      event.target.closest('button').style.color = 'white';
+      
+      // Mostrar resultados del cliente
+      const container = document.getElementById('resultsContainer');
+      const tabsDiv = container.querySelector('div:first-child');
+      
+      // Limpiar resultados previos
+      const resultDiv = document.createElement('div');
+      resultDiv.id = 'clientResults';
+      
+      selectClienteTabInterno(clientName, appState.resultadosPorCliente, resultDiv);
+      
+      // Reemplazar resultados
+      const oldResults = container.querySelector('#clientResults');
+      if (oldResults) oldResults.remove();
+      container.appendChild(resultDiv);
+    };
       if (!clienteName || !specialClients) return null;
       const cleaned = clienteName.toString().trim().toUpperCase();
 
