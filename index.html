@@ -571,9 +571,30 @@
     uploadArea.addEventListener('drop', (e) => {
       e.preventDefault();
       uploadArea.classList.remove('dragover');
-      if (e.dataTransfer.files[0]) {
-        fileInput.files = e.dataTransfer.files;
-        handleFileSelect();
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        const file = e.dataTransfer.files[0];
+        appState.currentFile = file;
+        fileName.textContent = file.name;
+        
+        try {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const workbook = XLSX.read(event.target.result);
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(worksheet);
+
+            appState.transfers = data;
+            recordCount.textContent = data.length;
+
+            fileInfo.style.display = 'block';
+            updateStatus('loading', '⏳ Archivo cargado: ' + data.length + ' transfers');
+            analyzeBtn.disabled = false;
+          };
+          reader.readAsArrayBuffer(file);
+        } catch (error) {
+          updateStatus('error', '❌ Error al leer archivo');
+          console.error(error);
+        }
       }
     });
 
