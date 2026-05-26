@@ -395,18 +395,21 @@
       font-size: 13px;
     }
 
-    @media (max-width: 768px) {
-      .main-grid {
-        grid-template-columns: 1fr;
-      }
+    .debug-log {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 11px;
+      color: #666;
+      max-height: 150px;
+      overflow-y: auto;
+      font-family: monospace;
+    }
 
-      .stats-bar {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .header h1 {
-        font-size: 24px;
-      }
+    .debug-log p {
+      margin: 2px 0;
     }
 
     .scrollbar {
@@ -430,6 +433,20 @@
 
     .scrollbar::-webkit-scrollbar-thumb:hover {
       background: #5568d3;
+    }
+
+    @media (max-width: 768px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .header h1 {
+        font-size: 24px;
+      }
     }
   </style>
 </head>
@@ -477,6 +494,8 @@
             🗑️ Limpiar
           </button>
         </div>
+
+        <div id="debugLog" class="debug-log"></div>
       </div>
 
       <!-- Panel derecho: Resultados -->
@@ -527,7 +546,7 @@
     // ============ CONFIGURACIÓN ============
     const GITHUB_REPO = 'alexulioa309-dev/cofarsur-validator-cloud';
     const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main`;
-    const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+    const NOTAS_FILE = 'NOTAS_DE_RECUPERO.xlsx'; // ← NOMBRE CORRECTO
     
     const SIMILARITY_THRESHOLD = 0.80;
     const TOLERANCE_WARNING = 0.05;
@@ -536,10 +555,11 @@
     // ============ ESTADO DE LA APP ============
     let appState = {
       currentFile: null,
-      specialClients: null,
+      specialClients: [],
       clientsData: {},
       transfers: [],
-      filteredTransfers: []
+      filteredTransfers: [],
+      debugLogs: []
     };
 
     // ============ ELEMENTOS DOM ============
@@ -556,10 +576,21 @@
     const resultsContainer = document.getElementById('resultsContainer');
     const searchInput = document.getElementById('searchInput');
     const filterStatus = document.getElementById('filterStatus');
+    const debugLog = document.getElementById('debugLog');
+
+    // ============ FUNCIONES DE DEBUG ============
+    function addDebugLog(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = `[${timestamp}] ${message}`;
+      appState.debugLogs.push(logEntry);
+      
+      // Mostrar últimos 10 logs
+      debugLog.innerHTML = appState.debugLogs.slice(-10).map(log => `<p>${log}</p>`).join('');
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
 
     // ============ EVENT LISTENERS ============
 
-    // Drag and drop
     uploadArea.addEventListener('click', () => fileInput.click());
     uploadArea.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -580,8 +611,8 @@
     fileInput.addEventListener('change', handleFileSelect);
     analyzeBtn.addEventListener('click', analyzeTransfers);
     clearBtn.addEventListener('click', clearAll);
-    searchInput.addEventListener('input', filterResults);
-    filterStatus.addEventListener('change', filterResults);
+    searchInput.addEventListener('input', applyFilters);
+    filterStatus.addEventListener('change', applyFilters);
 
     // ============ FUNCIONES ============
 
@@ -605,11 +636,12 @@
           fileInfo.style.display = 'block';
           updateStatus('loading', '⏳ Archivo cargado: ' + data.length + ' transfers');
           analyzeBtn.disabled = false;
+          addDebugLog(`✅ Archivo cargado: ${data.length} transfers`);
         };
         reader.readAsArrayBuffer(file);
       } catch (error) {
         updateStatus('error', '❌ Error al leer archivo');
-        console.error(error);
+        addDebugLog(`❌ Error al leer archivo: ${error.message}`);
       }
     }
 
@@ -620,69 +652,107 @@
       }
 
       showLoading(true);
-      updateStatus('loading', '🔄 Descargando datos maestros desde GitHub...');
+      appState.debugLogs = [];
+      addDebugLog('🚀 Iniciando análisis...');
 
       try {
-        // Descargar NOTAS DE RECUPERO
-        const notasUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/NOTAS_DE_RECUPERO.xlsx`;
-        const proxyUrl = `${CORS_PROXY}${encodeURIComponent(notasUrl)}`;
+        // Paso 1: Descargar NOTAS DE RECUPERO
+        updateStatus('loading', '🔄 Descargando clientes especiales desde GitHub...');
+        addDebugLog(`📥 Descargando: ${NOTAS_FILE}`);
+
+        const notasUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/${NOTAS_FILE}`;
+        addDebugLog(`URL: ${notasUrl}`);
+
+        const notasRes = await fetch(notasUrl);
         
-        const notasRes = await fetch(proxyUrl);
-        if (!notasRes.ok) throw new Error(`No se pudo descargar NOTAS_DE_RECUPERO.xlsx (Status: ${notasRes.status})`);
-        
+        if (!notasRes.ok) {
+          throw new Error(`HTTP ${notasRes.status}: No se pudo descargar ${NOTAS_FILE}`);
+        }
+
         const notasBuffer = await notasRes.arrayBuffer();
         const notasWorkbook = XLSX.read(notasBuffer);
-        const notasData = XLSX.utils.sheet_to_json(notasWorkbook.Sheets['Hoja2'] || notasWorkbook.Sheets[notasWorkbook.SheetNames[0]]);
+        const notasData = XLSX.utils.sheet_to_json(
+          notasWorkbook.Sheets['Hoja2'] || notasWorkbook.Sheets[notasWorkbook.SheetNames[0]]
+        );
 
-        // Procesar NOTAS para obtener clientes especiales
         appState.specialClients = procesarNotasRecuperó(notasData);
+        addDebugLog(`✅ Clientes especiales cargados: ${appState.specialClients.length}`);
 
-        updateStatus('loading', '🔄 Descargando Excel de clientes...');
-
-        // Descargar Excel de clientes (simular descarga de los 18)
-        // Por ahora descargamos uno para demostración
-        const clientNames = ['vigliocco', 'alvear', 'del_sud']; // Ejemplo, en producción serían los 18
+        // Paso 2: NUEVO MODELO - Procesar cliente por cliente
+        const resultados = [];
         
-        for (const clientName of clientNames) {
+        for (const cliente of appState.specialClients) {
+          addDebugLog(`\n🔄 Procesando cliente: ${cliente.cliente_nombre}`);
+          
+          // Filtrar transfers de este cliente
+          const transfersDelCliente = appState.transfers.filter(t => {
+            const clienteTransfer = (t['Cliente'] || '').toString().trim().toUpperCase();
+            const clienteNombre = cliente.cliente_nombre.toUpperCase();
+            return clienteTransfer.includes(clienteNombre) || clienteNombre.includes(clienteTransfer);
+          });
+
+          addDebugLog(`  └─ Transfers encontrados: ${transfersDelCliente.length}`);
+
+          if (transfersDelCliente.length === 0) {
+            addDebugLog(`  └─ Sin transfers para este cliente`);
+            continue;
+          }
+
+          // Buscar archivo del cliente
+          const clienteFileName = buscarArchivoCliente(cliente.cliente_nombre);
+          addDebugLog(`  └─ Buscando archivo: ${clienteFileName}`);
+
+          const clienteUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/clientes/${clienteFileName}`;
+
+          let clientData = null;
           try {
-            const clientUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/clientes/${clientName}.xlsx`;
-            const clientProxyUrl = `${CORS_PROXY}${encodeURIComponent(clientUrl)}`;
-            
-            const clientRes = await fetch(clientProxyUrl);
+            const clientRes = await fetch(clienteUrl);
             if (clientRes.ok) {
               const clientBuffer = await clientRes.arrayBuffer();
               const clientWorkbook = XLSX.read(clientBuffer);
-              const clientData = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
-              
-              appState.clientsData[clientName.toUpperCase()] = {
-                nombre: clientName,
-                productos: clientData
+              const clientSheetData = XLSX.utils.sheet_to_json(clientWorkbook.Sheets[clientWorkbook.SheetNames[0]]);
+              clientData = {
+                nombre: cliente.cliente_nombre,
+                productos: clientSheetData
               };
+              addDebugLog(`  └─ ✅ Datos cargados: ${clientSheetData.length} productos`);
+            } else {
+              addDebugLog(`  └─ ⚠️ No se encontró archivo: ${clienteFileName}`);
             }
           } catch (e) {
-            console.warn(`No se pudo descargar ${clientName}.xlsx:`, e);
+            addDebugLog(`  └─ ⚠️ Error descargando: ${e.message}`);
           }
-        }
 
-        updateStatus('loading', '🔄 Validando transfers...');
-
-        // Validar cada transfer
-        const resultados = [];
-        for (const transfer of appState.transfers) {
-          const validacion = await validateTransfer(transfer);
-          resultados.push(validacion);
+          // Validar cada transfer de este cliente
+          for (const transfer of transfersDelCliente) {
+            const validacion = await validateTransfer(transfer, cliente, clientData);
+            resultados.push(validacion);
+          }
         }
 
         appState.filteredTransfers = resultados;
         displayResults(resultados);
         updateStatus('success', '✅ Validación completada');
+        addDebugLog(`\n✅ Análisis finalizado: ${resultados.length} transfers procesados`);
 
       } catch (error) {
         console.error('Error:', error);
         updateStatus('error', '❌ Error: ' + error.message);
+        addDebugLog(`❌ ERROR: ${error.message}`);
       } finally {
         showLoading(false);
       }
+    }
+
+    function buscarArchivoCliente(clienteName) {
+      // Intenta diferentes variantes del nombre
+      const variantes = [
+        `${clienteName}.xlsx`,
+        `${clienteName.toUpperCase()}.xlsx`,
+        `${clienteName.toLowerCase()}.xlsx`,
+        clienteName.replace(/\s+/g, '_') + '.xlsx'
+      ];
+      return variantes[0]; // Retorna la primera (puedes mejorar esto)
     }
 
     function procesarNotasRecuperó(data) {
@@ -723,7 +793,7 @@
       return clients;
     }
 
-    async function validateTransfer(transfer) {
+    async function validateTransfer(transfer, clienteEspecial, clientData) {
       try {
         const nro_transfer = transfer['Nro. Transfer'] || transfer['Numero'] || '';
         const laboratorio = transfer['Laboratorio'] || transfer['Lab'] || '';
@@ -732,26 +802,10 @@
         const producto = transfer['Producto'] || transfer['Desc'] || '';
         const cantidad = parseInt(transfer['Cantidad'] || 0);
 
-        // Paso 1: Verificar si cliente está en NOTAS DE RECUPERO
-        const clientMatch = findClientMatch(cliente, appState.specialClients);
+        // ✅ Cliente ya está confirmado (encontrado por cliente especial)
 
-        if (!clientMatch) {
-          return {
-            nro_transfer,
-            cliente,
-            laboratorio,
-            producto,
-            ean: cod_barra,
-            cantidad_real: cantidad,
-            cantidad_esperada: null,
-            estado: 'DESCARTADO',
-            mensaje: `Cliente "${cliente}" no está en lista especial`,
-            diferencia_pct: null
-          };
-        }
-
-        // Paso 2: Verificar laboratorio
-        const labsPermitidos = clientMatch.laboratorios;
+        // Verificar laboratorio
+        const labsPermitidos = clienteEspecial.laboratorios;
         const todosTodos = labsPermitidos.includes('TODOS LOS LABORATORIOS') ||
                           labsPermitidos.some(lab => lab.toLowerCase().includes('todos'));
 
@@ -760,47 +814,42 @@
           if (!labMatch) {
             return {
               nro_transfer,
-              cliente: clientMatch.cliente_nombre,
+              cliente: clienteEspecial.cliente_nombre,
               laboratorio,
               producto,
               ean: cod_barra,
               cantidad_real: cantidad,
               cantidad_esperada: null,
               estado: 'DESCARTADO',
-              mensaje: `Laboratorio "${laboratorio}" no permitido`,
+              mensaje: `Laboratorio "${laboratorio}" no permitido para ${clienteEspecial.cliente_nombre}`,
               diferencia_pct: null
             };
           }
         }
 
-        // Paso 3: Buscar datos del cliente
-        const clientData = Object.values(appState.clientsData).find(c => 
-          c.nombre.toUpperCase() === clientMatch.cliente_nombre.toUpperCase() ||
-          clientMatch.cliente_nombre.toUpperCase().includes(c.nombre.toUpperCase())
-        );
-
+        // Verificar datos del cliente
         if (!clientData) {
           return {
             nro_transfer,
-            cliente: clientMatch.cliente_nombre,
+            cliente: clienteEspecial.cliente_nombre,
             laboratorio,
             producto,
             ean: cod_barra,
             cantidad_real: cantidad,
             cantidad_esperada: null,
             estado: 'PENDIENTE',
-            mensaje: `Datos del cliente no disponibles en el sistema`,
+            mensaje: `Datos del cliente no disponibles`,
             diferencia_pct: null
           };
         }
 
-        // Paso 4: Buscar producto
+        // Buscar producto
         const productoMatch = findProductoMatch(cod_barra, producto, laboratorio, clientData.productos);
 
         if (!productoMatch) {
           return {
             nro_transfer,
-            cliente: clientMatch.cliente_nombre,
+            cliente: clienteEspecial.cliente_nombre,
             laboratorio,
             producto,
             ean: cod_barra,
@@ -812,7 +861,7 @@
           };
         }
 
-        // Paso 5: Comparar cantidades
+        // Comparar cantidades
         const cantidadEsperada = parseInt(productoMatch['C'] || productoMatch['Cantidad'] || 0);
         const diferencia = Math.abs(cantidad - cantidadEsperada);
         const diferenciaPct = cantidadEsperada > 0 ? (diferencia / cantidadEsperada) : 0;
@@ -835,7 +884,7 @@
 
         return {
           nro_transfer,
-          cliente: clientMatch.cliente_nombre,
+          cliente: clienteEspecial.cliente_nombre,
           laboratorio,
           producto: productoMatch['Producto'] || productoMatch['Nombre'] || producto,
           ean: cod_barra,
@@ -848,7 +897,6 @@
         };
 
       } catch (error) {
-        console.error('Error validando transfer:', error);
         return {
           nro_transfer: transfer['Nro. Transfer'] || '?',
           cliente: transfer['Cliente'] || '?',
@@ -859,27 +907,6 @@
           diferencia_pct: null
         };
       }
-    }
-
-    function findClientMatch(clienteName, specialClients) {
-      if (!clienteName || !specialClients) return null;
-      const cleaned = clienteName.toString().trim().toUpperCase();
-
-      // Búsqueda exacta
-      const exactMatch = specialClients.find(c => c.cliente_nombre.toUpperCase() === cleaned);
-      if (exactMatch) return exactMatch;
-
-      // Búsqueda fuzzy
-      const scores = specialClients.map(client => ({
-        client,
-        score: stringSimilarity.compareTwoStrings(cleaned, client.cliente_nombre.toUpperCase())
-      }));
-
-      const bestMatch = scores.reduce((best, current) =>
-        current.score > best.score ? current : best
-      );
-
-      return bestMatch.score >= SIMILARITY_THRESHOLD ? bestMatch.client : null;
     }
 
     function findLaboratorioMatch(laboratorio, labsPermitidos) {
@@ -904,7 +931,6 @@
     function findProductoMatch(ean, productName, laboratorio, productos) {
       if (!productos || productos.length === 0) return null;
 
-      // Búsqueda por EAN
       if (ean && ean.toString().trim()) {
         const eanMatch = productos.find(p => {
           const pEan = p['EAN'] || p['Ean'] || p['Cod. Barra'] || '';
@@ -913,7 +939,6 @@
         if (eanMatch) return eanMatch;
       }
 
-      // Búsqueda por nombre + laboratorio
       if (productName && productName.toString().trim()) {
         const cleaned = productName.toString().trim().toUpperCase();
         const labCleaned = laboratorio.toString().trim().toUpperCase();
@@ -1014,7 +1039,7 @@
       });
     }
 
-    function filterResults() {
+    function applyFilters() {
       const searchTerm = searchInput.value.toLowerCase();
       const statusFilter = filterStatus.value;
 
@@ -1050,10 +1075,11 @@
     function clearAll() {
       appState = {
         currentFile: null,
-        specialClients: null,
+        specialClients: [],
         clientsData: {},
         transfers: [],
-        filteredTransfers: []
+        filteredTransfers: [],
+        debugLogs: []
       };
 
       fileInput.value = '';
@@ -1074,6 +1100,7 @@
 
       searchInput.value = '';
       filterStatus.value = '';
+      debugLog.innerHTML = '';
     }
   </script>
 </body>
