@@ -527,7 +527,7 @@
     // ============ CONFIGURACIÓN ============
     const GITHUB_REPO = 'alexulioa309-dev/cofarsur-validator-cloud';
     const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main`;
-    const CORS_PROXY = 'https://corsproxy.io/?';
+    const DATA_URL = '/data'; // Archivos servidos desde Netlify
     
     const SIMILARITY_THRESHOLD = 0.80;
     const TOLERANCE_WARNING = 0.05;
@@ -624,9 +624,8 @@
 
       try {
         // Descargar NOTAS DE RECUPERO
-        const notasUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/NOTAS_DE_RECUPERO.xlsx`;
-        const notasProxyUrl = `${CORS_PROXY}${notasUrl}`;
-        const notasRes = await fetch(notasProxyUrl);
+        const notasUrl = `${DATA_URL}/NOTAS_DE_RECUPERO.xlsx`;
+        const notasRes = await fetch(notasUrl);
         if (!notasRes.ok) throw new Error(`No se pudo descargar NOTAS_DE_RECUPERO.xlsx (Status: ${notasRes.status})`);
         
         const notasBuffer = await notasRes.arrayBuffer();
@@ -644,9 +643,8 @@
         
         for (const clientName of clientNames) {
           try {
-            const clientUrl = `${GITHUB_RAW_URL}/ARCHIVOS_MAESTROS/clientes/${clientName}.xlsx`;
-            const clientProxyUrl = `${CORS_PROXY}${clientUrl}`;
-            const clientRes = await fetch(clientProxyUrl);
+            const clientUrl = `${DATA_URL}/${clientName}.xlsx`;
+            const clientRes = await fetch(clientUrl);
             if (clientRes.ok) {
               const clientBuffer = await clientRes.arrayBuffer();
               const clientWorkbook = XLSX.read(clientBuffer);
