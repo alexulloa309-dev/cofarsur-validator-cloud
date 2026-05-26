@@ -1175,6 +1175,8 @@
       if (oldResults) oldResults.remove();
       container.appendChild(resultDiv);
     };
+
+    function findClientMatch(clienteName, specialClients) {
       if (!clienteName || !specialClients) return null;
       const cleaned = clienteName.toString().trim().toUpperCase();
 
