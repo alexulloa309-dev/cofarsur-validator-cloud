@@ -267,9 +267,9 @@
       }
 
       showLoading(true);
+      console.log('🔍 INICIO ANÁLISIS');
 
       try {
-        // Cargar clientes especiales desde CSV embebido
         appState.specialClients = {
           "MARCELLINO - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
           "DEL SUBNIVEL - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
@@ -297,40 +297,58 @@
 
         const resultados = [];
 
-        // Detectar columnas dinámicamente
-        const headers = Object.keys(appState.transfers[0] || {});
-        const colCliente = findColumnByNames(headers, ['Cliente', 'CLIENTE', 'Cadena']);
-        const colLab = findColumnByNames(headers, ['Laboratorio', 'Lab', 'LABORATORIO', 'Proveedor']);
-        const colProd = findColumnByNames(headers, ['Producto', 'Desc', 'PRODUCTO', 'Descripcion']);
-        const colEan = findColumnByNames(headers, ['EAN', 'Ean', 'Cod. Barra', 'Codigo', 'CodigoBarra']);
-        const colCant = findColumnByNames(headers, ['Cantidad', 'Cant', 'Qty', 'CANTIDAD']);
+        // PASO 1: Obtener headers originales
+        const rawHeaders = Object.keys(appState.transfers[0] || {});
+        console.log('✅ Headers encontrados:', rawHeaders);
 
+        // PASO 2: Detectar columnas por NOMBRE, NO por índice
+        let colCliente = -1, colLab = -1, colProd = -1, colEan = -1, colCant = -1;
+        
+        for (let i = 0; i < rawHeaders.length; i++) {
+          const h = rawHeaders[i].toUpperCase().trim();
+          if (['CLIENTE', 'CADENA'].includes(h)) colCliente = rawHeaders[i];
+          if (['LABORATORIO', 'LAB', 'PROVEEDOR'].includes(h) || h.includes('LAB')) colLab = rawHeaders[i];
+          if (['PRODUCTO', 'DESC', 'DESCRIPCION'].includes(h)) colProd = rawHeaders[i];
+          if (['EAN', 'COD. BARRA', 'CODIGO', 'CODIGOBARRA'].includes(h)) colEan = rawHeaders[i];
+          if (['CANTIDAD', 'CANT', 'QTY'].includes(h)) colCant = rawHeaders[i];
+        }
+
+        console.log('✅ Columnas detectadas:', { colCliente, colLab, colProd, colEan, colCant });
+
+        // PASO 3: Iterar clientes especiales
         for (const [clienteName, labs] of Object.entries(appState.specialClients)) {
           const transfersDelCliente = appState.transfers.filter(t => {
-            const ct = colCliente >= 0 ? (t[headers[colCliente]] || '').toString().trim().toUpperCase() : '';
-            return ct.includes(clienteName.toUpperCase()) || clienteName.toUpperCase().includes(ct);
+            if (!colCliente) return false;
+            const ct = (t[colCliente] || '').toString().trim().toUpperCase();
+            const match = ct.includes(clienteName.toUpperCase()) || clienteName.toUpperCase().includes(ct);
+            return match;
           });
 
+          if (transfersDelCliente.length > 0) {
+            console.log(`📦 ${clienteName}: ${transfersDelCliente.length} transfers`);
+          }
+
+          // PASO 4: Procesar cada transfer
           for (const transfer of transfersDelCliente) {
-            const lab = colLab >= 0 ? transfer[headers[colLab]] : 'SIN_LAB';
-            const cant = colCant >= 0 ? parseInt(transfer[headers[colCant]] || 0) : 0;
-            const prod = colProd >= 0 ? transfer[headers[colProd]] : 'SIN_PROD';
-            const ean = colEan >= 0 ? (transfer[headers[colEan]] || '').toString().trim() : '';
+            const lab = colLab ? (transfer[colLab] || '').toString().trim() : 'SIN_LAB';
+            const cant = colCant ? parseInt((transfer[colCant] || 0).toString()) || 0 : 0;
+            const prod = colProd ? (transfer[colProd] || '').toString().trim() : 'SIN_PROD';
+            const ean = colEan ? (transfer[colEan] || '').toString().trim() : '';
 
             const todosTodos = labs.includes('TODOS LOS LABORATORIOS');
             let estado = 'OK';
             let mensaje = '✓ Transfer válido';
 
-            if (!todosTodos) {
-              const labMatch = labs.find(l => similarityScore(lab, l) >= SIMILARITY_THRESHOLD);
+            if (!todosTodos && lab && lab !== 'SIN_LAB') {
+              const labMatch = labs.find(l => similarityScore(lab.toUpperCase(), l.toUpperCase()) >= SIMILARITY_THRESHOLD);
               if (!labMatch) {
                 estado = 'ERROR';
-                mensaje = `Laboratorio no permitido`;
+                mensaje = `Laboratorio "${lab}" no permitido`;
               }
             }
 
             resultados.push({
-              nro_transfer: transfer[headers[0]] || '?',
+              nro_transfer: transfer[rawHeaders[0]] || '?',
               cliente: clienteName,
               laboratorio: lab,
               producto: prod,
@@ -342,11 +360,13 @@
           }
         }
 
+        console.log('✅ Total resultados:', resultados.length);
         appState.filteredTransfers = resultados;
         displayResults(resultados);
         updateStatus('success', '✅ Validación completada');
 
       } catch (error) {
+        console.error('❌ ERROR:', error);
         updateStatus('error', '❌ Error: ' + error.message);
       } finally {
         showLoading(false);
