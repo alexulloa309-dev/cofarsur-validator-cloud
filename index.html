@@ -157,44 +157,52 @@
     const GITHUB_REPO = 'alexulioa309-dev/cofarsur-validator-cloud';
     const DATA_URL = '/data';
     
-
-    const SIMILARITY_THRESHOLD = 0.75;
+    const SIMILARITY_THRESHOLD = 0.80;
     const TOLERANCE_WARNING = 0.05;
     const TOLERANCE_ERROR = 0.20;
 
-    // ============ SIMILITUD (Dice coefficient sobre bigramas) ============
+    // ============ FUNCIÓN PROPIA DE SIMILITUD (SIN stringSimilarity) ============
     function similarityScore(str1, str2) {
       if (!str1 || !str2) return 0;
+      
       const s1 = str1.toString().toUpperCase().trim();
       const s2 = str2.toString().toUpperCase().trim();
+      
+      // Exacto
       if (s1 === s2) return 1.0;
-      if (s1.includes(s2) || s2.includes(s1)) return 0.92;
-      // Dice sobre bigramas
-      const bigrams = (s) => {
-        const b = new Set();
-        for (let i = 0; i < s.length - 1; i++) b.add(s[i] + s[i+1]);
-        return b;
-      };
-      const b1 = bigrams(s1), b2 = bigrams(s2);
-      let inter = 0;
-      for (const bg of b1) if (b2.has(bg)) inter++;
-      return (2 * inter) / (b1.size + b2.size) || 0;
+      
+      // Contiene
+      if (s1.includes(s2) || s2.includes(s1)) return 0.95;
+      
+      // Levenshtein simplificado
+      let matches = 0;
+      const minLen = Math.min(s1.length, s2.length);
+      for (let i = 0; i < minLen; i++) {
+        if (s1[i] === s2[i]) matches++;
+      }
+      return matches / Math.max(s1.length, s2.length);
     }
 
-    // ============ BUSCAR COLUMNA POR NOMBRE ============
-    function findCol(headers, names) {
-      const up = names.map(n => n.toUpperCase());
-      for (const h of headers) {
-        const hu = (h || '').toString().toUpperCase().trim();
-        for (const n of up) {
-          if (hu === n || hu.includes(n) || n.includes(hu)) return h;
+    // ============ MAPEO DINÁMICO DE COLUMNAS ============
+    function findColumnByNames(headers, names) {
+      const upperNames = names.map(n => n.toUpperCase());
+      for (let i = 0; i < headers.length; i++) {
+        const headerUpper = (headers[i] || '').toString().toUpperCase().trim();
+        for (const name of upperNames) {
+          if (headerUpper === name || headerUpper.includes(name) || name.includes(headerUpper)) {
+            return i;
+          }
         }
       }
-      return null;
+      return -1;
     }
 
     // ============ ESTADO ============
-    let appState = { transfers: [], filteredTransfers: [], specialClients: {} };
+    let appState = {
+      transfers: [],
+      filteredTransfers: [],
+      specialClients: {}
+    };
 
     // ============ DOM ============
     const uploadArea = document.getElementById('uploadArea');
@@ -205,35 +213,45 @@
     const loadingSpinner = document.getElementById('loadingSpinner');
     const resultsContainer = document.getElementById('resultsContainer');
 
-    // ============ EVENTOS ============
+    // ============ EVENT LISTENERS ============
     uploadArea.addEventListener('click', () => fileInput.click());
-    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
     uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
     uploadArea.addEventListener('drop', (e) => {
-      e.preventDefault(); uploadArea.classList.remove('dragover');
-      if (e.dataTransfer.files[0]) { fileInput.files = e.dataTransfer.files; handleFileSelect(); }
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) {
+        fileInput.files = e.dataTransfer.files;
+        handleFileSelect();
+      }
     });
+
     fileInput.addEventListener('change', handleFileSelect);
     analyzeBtn.addEventListener('click', analyzeTransfers);
     clearBtn.addEventListener('click', clearAll);
     document.getElementById('searchInput').addEventListener('input', applyFilters);
     document.getElementById('filterStatus').addEventListener('change', applyFilters);
 
-    // ============ LEER ARCHIVO ============
+    // ============ FUNCIONES ============
     function handleFileSelect() {
       const file = fileInput.files[0];
       if (!file) return;
+
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
           const workbook = XLSX.read(e.target.result);
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const data = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+          const data = XLSX.utils.sheet_to_json(worksheet);
+
           appState.transfers = data;
           document.getElementById('fileName').textContent = file.name;
           document.getElementById('recordCount').textContent = data.length;
           document.getElementById('fileInfo').style.display = 'block';
-          updateStatus('loading', '⏳ Archivo cargado: ' + data.length + ' registros');
+          updateStatus('loading', '⏳ Archivo cargado: ' + data.length + ' transfers');
           analyzeBtn.disabled = false;
         } catch (error) {
           updateStatus('error', '❌ Error al leer archivo: ' + error.message);
@@ -242,160 +260,99 @@
       reader.readAsArrayBuffer(file);
     }
 
-    // ============ CLIENTES ESPECIALES ============
-    const SPECIAL_CLIENTS = {
-      "MARCELLINO - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
-      "DEL SUBNIVEL - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
-      "NUEVA VILLA - DROGUERIA": ["ELEA S.A.", "BAGO S.A.", "ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "MEGALABS ARGENTINA S.A.U", "ASTRAZENECA", "GSK BIOPHARMA ARGENTINA S.A."],
-      "SANCHEZ ANTONIOLLI IX": ["ELEA S.A.", "BAGO S.A.", "ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "MEGALABS ARGENTINA S.A.U", "ASTRAZENECA", "GSK BIOPHARMA ARGENTINA S.A."],
-      "DROGUERIA LIDER - TRF": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BALIARDA S.A.", "PFIZER S.R.L."],
-      "GRASSI SUC V TRANSFERS": ["ASPEN ARGENTINA S.A", "BAGO S.A.", "PFIZER S.R.L.", "CASASCO S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "ASTRAZENECA"],
-      "HOSPITAL PRIVADO DROGUERIA (MED REP TARDE)": ["BAGO S.A.", "CASASCO S.A.", "POEN S.A.C.I.", "TEVA ARGENTINA"],
-      "MARISA DI CARLO - MEDICARLO": ["ASPEN ARGENTINA S.A", "BAGO S.A.", "ELEA S.A.", "CASASCO S.A.", "GADOR S.A.", "GSK BIOPHARMA ARGENTINA S.A.", "BALIARDA S.A."],
-      "RED COLON - TRF": ["ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A."],
-      "RED PERSCE DROGUERIA - TRF": ["ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A."],
-      "ESTRELLA DOCTA": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BAGO S.A.", "BALIARDA S.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "PFIZER S.R.L."],
-      "DEL SUD S.A.": ["ASTRAZENECA"],
-      "VIGLIOCCO - 9 DE JULIO": ["ASTRAZENECA", "BALIARDA S.A.", "CASASCO S.A.", "FINADIET SACIFI", "POEN S.A.C.I."],
-      "SAN ISIDRO": ["ELEA S.A."],
-      "FARMAFERRI": ["CASASCO S.A."],
-      "SINDICAL SUTIAGA 3": ["TODOS LOS LABORATORIOS"],
-      "TRAFUL": ["MONTE VERDE S.A."],
-      "PODESTA - TRF": ["MONTE VERDE S.A."],
-      "SVFARMA - ALTA CORDOBA (SV1)": ["ASPEN ARGENTINA S.A", "BAGO S.A.", "BALIARDA S.A.", "BAUSCH & LOMB ARGENTINA S.R.L.", "BETA S.A.I.C.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "GSK BIOPHARMA ARGENTINA S.A.", "MAX VISION SRL", "MONTE VERDE S.A.", "PFIZER S.R.L."],
-      "SARMIENTO I - TRF": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BAGO S.A.", "BALIARDA S.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "PFIZER S.R.L."],
-      "DIFARMA SALUD II": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BAGO S.A.", "BALIARDA S.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "PFIZER S.R.L."],
-      "ALVEAR S.A.": ["TODOS LOS LABORATORIOS"]
-    };
-
-    // ============ DETECTAR CLIENTE DEL ARCHIVO ============
-    // Si el Excel no tiene columna cliente, intenta detectar el cliente
-    // por el nombre del archivo o asume por contexto.
-    // Retorna: null = no se pudo detectar (usar columna cliente), string = nombre del cliente
-    function detectClienteFromFilename(filename) {
-      if (!filename) return null;
-      const fn = filename.toUpperCase().replace(/[_\-\.]/g, ' ');
-      for (const clienteName of Object.keys(SPECIAL_CLIENTS)) {
-        const cn = clienteName.toUpperCase().replace(/[_\-\.]/g, ' ');
-        if (fn.includes(cn) || similarityScore(fn, cn) >= 0.70) return clienteName;
-        // También buscar palabras clave del nombre
-        const words = cn.split(' ').filter(w => w.length > 4);
-        const matched = words.filter(w => fn.includes(w));
-        if (matched.length >= 2) return clienteName;
-      }
-      return null;
-    }
-
-    // ============ ANALIZAR ============
     async function analyzeTransfers() {
       if (appState.transfers.length === 0) {
         updateStatus('error', '❌ No hay transfers para analizar');
         return;
       }
+
       showLoading(true);
 
       try {
+        // Cargar clientes especiales desde CSV embebido
+        appState.specialClients = {
+          "MARCELLINO - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
+          "DEL SUBNIVEL - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
+          "NUEVA VILLA - DROGUERIA": ["ELEA S.A.", "BAGO S.A.", "ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "MEGALABS ARGENTINA S.A.U", "ASTRAZENECA", "GSK BIOPHARMA ARGENTINA S.A."],
+          "SANCHEZ ANTONIOLLI IX": ["ELEA S.A.", "BAGO S.A.", "ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "MEGALABS ARGENTINA S.A.U", "ASTRAZENECA", "GSK BIOPHARMA ARGENTINA S.A."],
+          "DROGUERIA LIDER - TRF": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BALIARDA S.A.", "PFIZER S.R.L."],
+          "GRASSI SUC V TRANSFERS": ["ASPEN ARGENTINA S.A", "BAGO S.A.", "PFIZER S.R.L.", "CASASCO S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "ASTRAZENECA"],
+          "HOSPITAL PRIVADO DROGUERIA (MED REP TARDE)": ["BAGO S.A.", "CASASCO S.A.", "POEN S.A.C.I.", "TEVA ARGENTINA"],
+          "MARISA DI CARLO - MEDICARLO": ["ASPEN ARGENTINA S.A", "BAGO S.A.", "ELEA S.A.", "CASASCO S.A.", "GADOR S.A.", "GSK BIOPHARMA ARGENTINA S.A.", "BALIARDA S.A."],
+          "RED COLON - TRF": ["ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A."],
+          "RED PERSCE DROGUERIA - TRF": ["ASPEN ARGENTINA S.A", "PFIZER S.R.L.", "BALIARDA S.A."],
+          "ESTRELLA DOCTA": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BAGO S.A.", "BALIARDA S.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "PFIZER S.R.L."],
+          "DEL SUD S.A.": ["ASTRAZENECA"],
+          "VIGLIOCCO - 9 DE JULIO": ["ASTRAZENECA", "BALIARDA S.A.", "CASASCO S.A.", "FINADIET SACIFI", "POEN S.A.C.I."],
+          "SAN ISIDRO": ["ELEA S.A."],
+          "FARMAFERRI": ["CASASCO S.A."],
+          "SINDICAL SUTIAGA 3": ["TODOS LOS LABORATORIOS"],
+          "TRAFUL": ["MONTE VERDE S.A."],
+          "PODESTA - TRF": ["MONTE VERDE S.A."],
+          "SVFARMA - ALTA CORDOBA (SV1)": ["ASPEN ARGENTINA S.A", "BAGO S.A.", "BALIARDA S.A.", "BAUSCH & LOMB ARGENTINA S.R.L.", "BETA S.A.I.C.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "GSK BIOPHARMA ARGENTINA S.A.", "MAX VISION SRL", "MONTE VERDE S.A.", "PFIZER S.R.L."],
+          "SARMIENTO I - TRF": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BAGO S.A.", "BALIARDA S.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "MONTE VERDE S.A.", "PFIZER S.R.L."],
+          "DIFARMA SALUD II": ["ASPEN ARGENTINA S.A", "ASTRAZENECA", "BAGO S.A.", "BALIARDA S.A.", "CASASCO S.A.", "ELEA S.A.", "GADOR S.A.", "PFIZER S.R.L."],
+          "ALVEAR S.A.": ["TODOS LOS LABORATORIOS"]
+        };
+
         const resultados = [];
+
+        // Detectar columnas dinámicamente
         const headers = Object.keys(appState.transfers[0] || {});
+        const colCliente = findColumnByNames(headers, ['Cliente', 'CLIENTE', 'Cadena']);
+        const colLab = findColumnByNames(headers, ['Laboratorio', 'Lab', 'LABORATORIO', 'Proveedor']);
+        const colProd = findColumnByNames(headers, ['Producto', 'Desc', 'PRODUCTO', 'Descripcion']);
+        const colEan = findColumnByNames(headers, ['EAN', 'Ean', 'Cod. Barra', 'Codigo', 'CodigoBarra']);
+        const colCant = findColumnByNames(headers, ['Cantidad', 'Cant', 'Qty', 'CANTIDAD']);
 
-        // Detectar columnas por nombre
-        const keyCliente = findCol(headers, ['Cliente', 'CLIENTE', 'Cadena', 'CADENA', 'Farmacia']);
-        const keyLab     = findCol(headers, ['Laboratorio', 'Lab', 'LABORATORIO', 'Proveedor', 'PROVEEDOR']);
-        const keyProd    = findCol(headers, ['Producto', 'PRODUCTO', 'Descripcion', 'Descripción', 'Desc']);
-        const keyEan     = findCol(headers, ['EAN', 'Ean', 'Cod. Barra', 'CodigoBarra', 'Codigo', 'Barcode']);
-        const keyCant    = findCol(headers, ['Cantidad', 'CANTIDAD', 'Cant', 'Qty', 'Unidades']);
-        const keyNro     = findCol(headers, ['Nro', 'Numero', 'Transfer', 'NroTransfer', 'ID', 'Id']);
+        for (const [clienteName, labs] of Object.entries(appState.specialClients)) {
+          const transfersDelCliente = appState.transfers.filter(t => {
+            const ct = colCliente >= 0 ? (t[headers[colCliente]] || '').toString().trim().toUpperCase() : '';
+            return ct.includes(clienteName.toUpperCase()) || clienteName.toUpperCase().includes(ct);
+          });
 
-        // Detectar si el archivo es de un único cliente (sin columna cliente)
-        const fileName = document.getElementById('fileName').textContent;
-        const clienteUnico = !keyCliente ? detectClienteFromFilename(fileName) : null;
+          for (const transfer of transfersDelCliente) {
+            const lab = colLab >= 0 ? transfer[headers[colLab]] : 'SIN_LAB';
+            const cant = colCant >= 0 ? parseInt(transfer[headers[colCant]] || 0) : 0;
+            const prod = colProd >= 0 ? transfer[headers[colProd]] : 'SIN_PROD';
+            const ean = colEan >= 0 ? (transfer[headers[colEan]] || '').toString().trim() : '';
 
-        // Construir mapa: clienteName -> lista de transfers
-        const transfersPorCliente = {};
-
-        if (clienteUnico) {
-          // Todos los registros pertenecen a este cliente
-          transfersPorCliente[clienteUnico] = appState.transfers;
-        } else if (keyCliente) {
-          // Agrupar por columna cliente
-          for (const t of appState.transfers) {
-            const rawCliente = (t[keyCliente] || '').toString().trim().toUpperCase();
-            if (!rawCliente) continue;
-
-            // Buscar qué cliente especial corresponde
-            let matched = null;
-            for (const cn of Object.keys(SPECIAL_CLIENTS)) {
-              const cnUp = cn.toUpperCase();
-              if (rawCliente === cnUp) { matched = cn; break; }
-              if (rawCliente.includes(cnUp) || cnUp.includes(rawCliente)) { matched = cn; break; }
-              if (similarityScore(rawCliente, cnUp) >= SIMILARITY_THRESHOLD) { matched = cn; break; }
-            }
-            if (matched) {
-              if (!transfersPorCliente[matched]) transfersPorCliente[matched] = [];
-              transfersPorCliente[matched].push(t);
-            }
-          }
-        } else {
-          // Sin columna cliente y sin detección por filename: analizar contra todos los clientes
-          // usando el laboratorio como señal
-          for (const clienteName of Object.keys(SPECIAL_CLIENTS)) {
-            transfersPorCliente[clienteName] = appState.transfers;
-          }
-        }
-
-        // Validar cada transfer por cliente
-        for (const [clienteName, transfers] of Object.entries(transfersPorCliente)) {
-          const labs = SPECIAL_CLIENTS[clienteName];
-          const todosTodos = labs.includes('TODOS LOS LABORATORIOS');
-
-          for (const transfer of transfers) {
-            const lab  = keyLab  ? (transfer[keyLab]  || '').toString().trim() : '';
-            const prod = keyProd ? (transfer[keyProd] || '').toString().trim() : '';
-            const ean  = keyEan  ? (transfer[keyEan]  || '').toString().trim() : '';
-            const cant = keyCant ? parseInt(transfer[keyCant] || 0) : 0;
-            const nro  = keyNro  ? (transfer[keyNro]  || '') : (transfer[headers[0]] || '');
-
+            const todosTodos = labs.includes('TODOS LOS LABORATORIOS');
             let estado = 'OK';
             let mensaje = '✓ Transfer válido';
 
-            if (!lab) {
-              estado = 'ADVERTENCIA';
-              mensaje = 'Sin laboratorio';
-            } else if (!todosTodos) {
-              // Buscar lab permitido con similitud
+            if (!todosTodos) {
               const labMatch = labs.find(l => similarityScore(lab, l) >= SIMILARITY_THRESHOLD);
               if (!labMatch) {
                 estado = 'ERROR';
-                mensaje = `Laboratorio no permitido: "${lab}"`;
+                mensaje = `Laboratorio no permitido`;
               }
             }
 
             resultados.push({
-              nro_transfer: nro,
+              nro_transfer: transfer[headers[0]] || '?',
               cliente: clienteName,
-              laboratorio: lab || '-',
-              producto: prod || '-',
-              ean: ean || '-',
+              laboratorio: lab,
+              producto: prod,
+              ean: ean,
               cantidad_real: cant,
-              estado,
-              mensaje
+              estado: estado,
+              mensaje: mensaje
             });
           }
         }
 
         appState.filteredTransfers = resultados;
         displayResults(resultados);
-        updateStatus('success', '✅ Validación completada por cliente');
+        updateStatus('success', '✅ Validación completada');
 
       } catch (error) {
         updateStatus('error', '❌ Error: ' + error.message);
-        console.error(error);
       } finally {
         showLoading(false);
       }
     }
 
-    // ============ MOSTRAR RESULTADOS ============
     function displayResults(resultados) {
       const stats = {
         total: resultados.length,
@@ -403,10 +360,12 @@
         warning: resultados.filter(r => r.estado === 'ADVERTENCIA').length,
         error: resultados.filter(r => r.estado === 'ERROR').length
       };
+
       document.getElementById('statTotal').textContent = stats.total;
       document.getElementById('statOk').textContent = stats.ok;
       document.getElementById('statWarning').textContent = stats.warning;
       document.getElementById('statError').textContent = stats.error;
+
       resultsContainer.innerHTML = '';
 
       if (resultados.length === 0) {
@@ -433,10 +392,6 @@
                   <div class="cant-label">EAN:</div>
                   <div class="cant-value">${result.ean}</div>
                 </div>
-                <div class="cant-item">
-                  <div class="cant-label">Cantidad:</div>
-                  <div class="cant-value">${result.cantidad_real}</div>
-                </div>
               </div>
               <div class="result-mensaje">${result.mensaje}</div>
             </div>
@@ -446,18 +401,16 @@
       });
     }
 
-    // ============ FILTROS ============
     function applyFilters() {
       const search = document.getElementById('searchInput').value.toLowerCase();
       const status = document.getElementById('filterStatus').value;
+
       const filtered = appState.filteredTransfers.filter(r => {
-        const matchSearch = !search ||
-          r.cliente.toLowerCase().includes(search) ||
-          r.producto.toLowerCase().includes(search) ||
-          r.laboratorio.toLowerCase().includes(search);
+        const matchSearch = !search || r.cliente.toLowerCase().includes(search) || r.producto.toLowerCase().includes(search);
         const matchStatus = !status || r.estado === status;
         return matchSearch && matchStatus;
       });
+
       displayResults(filtered);
     }
 
