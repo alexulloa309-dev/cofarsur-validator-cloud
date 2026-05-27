@@ -8,11 +8,10 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    .header { text-align: center; color: white; margin-bottom: 40px; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { text-align: center; color: white; margin-bottom: 30px; }
     .header h1 { font-size: 32px; margin-bottom: 10px; }
-    .header p { font-size: 14px; opacity: 0.9; }
-    .main-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+    .main-grid { display: grid; grid-template-columns: 1fr 2.5fr; gap: 20px; }
     .panel { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); }
     .panel h2 { font-size: 20px; margin-bottom: 20px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
     .upload-area { border: 2px dashed #667eea; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; background: #f8f9ff; }
@@ -21,34 +20,37 @@
     .upload-icon { font-size: 40px; margin-bottom: 10px; }
     .upload-text { color: #666; font-size: 14px; }
     .upload-text strong { color: #667eea; cursor: pointer; }
-    .status-badge { display: inline-block; padding: 8px 15px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 15px; width: 100%; text-align: center; }
-    .status-success { background: #d1e7dd; color: #0f5132; }
-    .status-error { background: #f8d7da; color: #842029; }
-    .file-info { background: #f0f0f0; padding: 12px; border-radius: 6px; margin-top: 15px; font-size: 13px; color: #333; }
+    .file-info { background: #f0f0f0; padding: 12px; border-radius: 6px; margin-top: 15px; font-size: 13px; }
     .file-name { font-weight: 600; color: #667eea; }
     .button-group { display: flex; gap: 10px; margin-top: 20px; }
-    button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+    button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
     .btn-primary { background: #667eea; color: white; }
     .btn-primary:hover:not(:disabled) { background: #5568d3; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-secondary { background: #ddd; color: #333; }
-    .loading-spinner { display: none; text-align: center; padding: 20px; }
-    .loading-spinner.show { display: block; }
-    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+    .status-badge { padding: 8px 15px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 15px; width: 100%; text-align: center; background: #fff3cd; color: #856404; }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .results-container { display: grid; grid-template-columns: 1fr; gap: 15px; max-height: 600px; overflow-y: auto; padding-right: 10px; }
-    .result-item { border-left: 4px solid; padding: 15px; border-radius: 6px; background: #f9f9f9; }
-    .result-ok { border-left-color: #28a745; background: #d4edda; }
-    .result-error { border-left-color: #dc3545; background: #f8d7da; }
-    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .result-cliente { font-weight: 600; font-size: 15px; color: #333; }
-    .estado { font-weight: 600; font-size: 12px; padding: 4px 10px; border-radius: 4px; background: rgba(0, 0, 0, 0.1); }
-    .result-details { font-size: 13px; color: #555; line-height: 1.6; }
     .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
     .stat-item { background: #f0f0f0; padding: 15px; border-radius: 8px; text-align: center; }
     .stat-value { font-size: 24px; font-weight: 700; color: #667eea; }
     .stat-ok .stat-value { color: #28a745; }
     .stat-error .stat-value { color: #dc3545; }
+    .client-tabs { display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 10px; }
+    .client-tab { padding: 8px 15px; border-radius: 20px; background: #f0f0f0; color: #666; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; border: 2px solid transparent; }
+    .client-tab:hover { background: #e8ebff; }
+    .client-tab.active { background: #667eea; color: white; border-color: #667eea; }
+    .search-box { margin-bottom: 15px; }
+    .search-box input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .results-container { display: grid; grid-template-columns: 1fr; gap: 12px; max-height: 700px; overflow-y: auto; padding-right: 10px; }
+    .result-item { border-left: 4px solid #28a745; padding: 12px; border-radius: 6px; background: #d4edda; }
+    .result-item.error { border-left-color: #dc3545; background: #f8d7da; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .result-cliente { font-weight: 600; font-size: 13px; color: #333; }
+    .estado { font-weight: 600; font-size: 11px; padding: 3px 8px; border-radius: 3px; background: rgba(0,0,0,0.1); }
+    .result-details { font-size: 12px; color: #555; }
+    .result-producto { font-weight: 500; margin-bottom: 6px; }
+    .result-lab { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; }
     .empty-state { text-align: center; padding: 40px 20px; color: #999; }
   </style>
 </head>
@@ -56,7 +58,7 @@
   <div class="container">
     <div class="header">
       <h1>🚚 Validador de Transfers - Cofarsur</h1>
-      <p>Sistema inteligente de validación de transfers</p>
+      <p>Validación inteligente de transfers contra órdenes de compra</p>
     </div>
 
     <div class="main-grid">
@@ -64,20 +66,14 @@
         <h2>📂 Cargar Transfer Diario</h2>
         <div class="upload-area" id="uploadArea">
           <div class="upload-icon">📊</div>
-          <div class="upload-text">Arrastra tu archivo Excel o <strong>click aquí</strong></div>
+          <div class="upload-text">Arrastra tu archivo o <strong>click aquí</strong></div>
           <input type="file" id="fileInput" accept=".xlsx,.xls" />
         </div>
         <div id="fileInfo" class="file-info" style="display: none;">
           <strong>Archivo:</strong> <span class="file-name" id="fileName"></span><br>
           <strong>Registros:</strong> <span id="recordCount">0</span>
         </div>
-        <div id="loadingSpinner" class="loading-spinner">
-          <div class="spinner"></div>
-          <p>Procesando...</p>
-        </div>
-        <div id="statusBadge" class="status-badge" style="background: #fff3cd; color: #856404;">
-          ⏳ Selecciona un archivo
-        </div>
+        <div id="statusBadge" class="status-badge">⏳ Selecciona un archivo</div>
         <div class="button-group">
           <button class="btn-primary" id="analyzeBtn" disabled>🔍 Analizar</button>
           <button class="btn-secondary" id="clearBtn">🗑️ Limpiar</button>
@@ -104,6 +100,16 @@
             <div class="stat-value" id="statClientes">0</div>
           </div>
         </div>
+
+        <!-- TABS DE CLIENTES -->
+        <div id="clientTabs" class="client-tabs" style="display: none;"></div>
+
+        <!-- BÚSQUEDA -->
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="🔍 Buscar cliente o producto...">
+        </div>
+
+        <!-- RESULTADOS -->
         <div id="resultsContainer" class="results-container">
           <div class="empty-state">Los resultados aparecerán aquí</div>
         </div>
@@ -137,12 +143,14 @@
       "ALVEAR S.A.": ["TODOS LOS LABORATORIOS"]
     };
 
-    let appState = { transfers: [], results: [] };
+    let appState = { transfers: [], results: [], clientCounts: {}, activeFilter: '' };
 
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
     const analyzeBtn = document.getElementById('analyzeBtn');
     const resultsContainer = document.getElementById('resultsContainer');
+    const searchInput = document.getElementById('searchInput');
+    const clientTabsDiv = document.getElementById('clientTabs');
 
     uploadArea.addEventListener('click', () => fileInput.click());
     uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.background = '#e8ebff'; });
@@ -155,6 +163,7 @@
     });
     fileInput.addEventListener('change', handleFileSelect);
     analyzeBtn.addEventListener('click', analyzeTransfers);
+    searchInput.addEventListener('input', filterResults);
     document.getElementById('clearBtn').addEventListener('click', () => location.reload());
 
     function handleFileSelect() {
@@ -171,8 +180,6 @@
           document.getElementById('recordCount').textContent = data.length;
           document.getElementById('fileInfo').style.display = 'block';
           analyzeBtn.disabled = false;
-          console.log('✅ Cargado:', data.length, 'transfers');
-          console.log('Columns:', Object.keys(data[0] || {}));
         } catch (err) {
           alert('Error: ' + err.message);
         }
@@ -183,17 +190,19 @@
     function analyzeTransfers() {
       if (appState.transfers.length === 0) return;
 
-      showLoading(true);
-      const results = [];
-      let clientesCount = 0;
+      analyzeBtn.disabled = true;
+      const spinner = document.createElement('div');
+      spinner.className = 'spinner';
+      analyzeBtn.parentElement.insertBefore(spinner, analyzeBtn);
 
       setTimeout(() => {
         try {
-          // PASO 1: Iterar cada cliente especial
+          const results = [];
+          appState.clientCounts = {};
+          let clientesCount = 0;
+
           for (const [clienteName, allowedLabs] of Object.entries(SPECIAL_CLIENTS)) {
             const todosTodos = allowedLabs.includes('TODOS LOS LABORATORIOS');
-
-            // PASO 2: Buscar TODOS los transfers de este cliente
             const clientRows = appState.transfers.filter(row => {
               const allValues = Object.values(row).map(v => String(v || '').toUpperCase());
               return allValues.some(val => val.includes(clienteName.toUpperCase()));
@@ -201,11 +210,9 @@
 
             if (clientRows.length === 0) continue;
             clientesCount++;
-            console.log(`✅ ${clienteName}: ${clientRows.length} transfers`);
+            appState.clientCounts[clienteName] = clientRows.length;
 
-            // PASO 3: Procesar cada transfer del cliente
             for (const row of clientRows) {
-              const keys = Object.keys(row);
               const laboratorio = row['Laboratorio'] || row['laboratorio'] || '';
               const producto = row['Producto'] || row['producto'] || '';
               const ean = row['Cod. Laboratorio'] || row['Codigo_Laboratorio'] || row['EAN'] || '';
@@ -225,6 +232,7 @@
               }
 
               results.push({
+                nro_transfer: Object.values(row)[0] || '?',
                 cliente: clienteName,
                 producto: producto,
                 laboratorio: laboratorio,
@@ -236,30 +244,70 @@
           }
 
           appState.results = results;
+          appState.activeFilter = '';
+          displayClientTabs();
           displayResults(results);
+
           const stats = {
             total: results.length,
             ok: results.filter(r => r.estado === 'OK').length,
-            error: results.filter(r => r.estado === 'ERROR').length,
-            clientes: clientesCount
+            error: results.filter(r => r.estado === 'ERROR').length
           };
           document.getElementById('statTotal').textContent = stats.total;
           document.getElementById('statOk').textContent = stats.ok;
           document.getElementById('statError').textContent = stats.error;
-          document.getElementById('statClientes').textContent = stats.clientes;
+          document.getElementById('statClientes').textContent = clientesCount;
 
-          document.getElementById('statusBadge').className = 'status-badge status-success';
           document.getElementById('statusBadge').textContent = '✅ Análisis completo';
-          console.log('✅ ANÁLISIS FINALIZADO:', stats);
+          spinner.remove();
+          analyzeBtn.disabled = false;
 
         } catch (err) {
-          console.error('Error:', err);
-          document.getElementById('statusBadge').className = 'status-badge status-error';
           document.getElementById('statusBadge').textContent = '❌ Error: ' + err.message;
-        } finally {
-          showLoading(false);
+          spinner.remove();
+          analyzeBtn.disabled = false;
         }
       }, 100);
+    }
+
+    function displayClientTabs() {
+      clientTabsDiv.innerHTML = '';
+      clientTabsDiv.style.display = 'flex';
+
+      const uniqueClients = [...new Set(appState.results.map(r => r.cliente))].sort();
+
+      uniqueClients.forEach(client => {
+        const count = appState.clientCounts[client] || 0;
+        const tab = document.createElement('div');
+        tab.className = 'client-tab';
+        tab.textContent = `${client} (${count})`;
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.client-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          appState.activeFilter = client;
+          searchInput.value = '';
+          filterResults();
+        });
+        clientTabsDiv.appendChild(tab);
+      });
+    }
+
+    function filterResults() {
+      const search = searchInput.value.toLowerCase();
+      let filtered = appState.results;
+
+      if (appState.activeFilter) {
+        filtered = filtered.filter(r => r.cliente === appState.activeFilter);
+      }
+
+      if (search) {
+        filtered = filtered.filter(r => 
+          r.cliente.toLowerCase().includes(search) || 
+          r.producto.toLowerCase().includes(search)
+        );
+      }
+
+      displayResults(filtered);
     }
 
     function displayResults(results) {
@@ -270,30 +318,25 @@
       }
 
       results.forEach(r => {
-        const cls = `result-${r.estado.toLowerCase()}`;
+        const cls = r.estado === 'OK' ? '' : 'error';
         const html = `
           <div class="result-item ${cls}">
             <div class="result-header">
-              <div class="result-cliente">${r.cliente}</div>
+              <div class="result-cliente">#${r.nro_transfer} - ${r.cliente}</div>
               <span class="estado">${r.estado}</span>
             </div>
             <div class="result-details">
-              <div style="font-weight: 500; margin-bottom: 8px;">${r.producto}</div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
-                <div><div style="font-size: 12px; color: #777;">Lab:</div><div style="font-weight: 600;">${r.laboratorio}</div></div>
-                <div><div style="font-size: 12px; color: #777;">EAN:</div><div style="font-weight: 600;">${r.ean}</div></div>
+              <div class="result-producto">${r.producto}</div>
+              <div class="result-lab">
+                <div><strong>Lab:</strong> ${r.laboratorio}</div>
+                <div><strong>EAN:</strong> ${r.ean}</div>
               </div>
-              <div style="padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 12px; font-style: italic;">${r.mensaje}</div>
+              <div style="margin-top: 6px; font-style: italic; opacity: 0.8;">${r.mensaje}</div>
             </div>
           </div>
         `;
         resultsContainer.innerHTML += html;
       });
-    }
-
-    function showLoading(show) {
-      document.getElementById('loadingSpinner').classList.toggle('show', show);
-      analyzeBtn.disabled = show;
     }
   </script>
 </body>
