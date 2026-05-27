@@ -7,40 +7,31 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      padding: 20px;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
     .container { max-width: 1200px; margin: 0 auto; }
     .header { text-align: center; color: white; margin-bottom: 40px; }
     .header h1 { font-size: 32px; margin-bottom: 10px; }
     .header p { font-size: 14px; opacity: 0.9; }
-    .main-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 20px; }
+    .main-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
     .panel { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); }
     .panel h2 { font-size: 20px; margin-bottom: 20px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
     .upload-area { border: 2px dashed #667eea; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; background: #f8f9ff; }
     .upload-area:hover { background: #e8ebff; }
     .upload-area input { display: none; }
-    .upload-area.dragover { background: #e8ebff; }
     .upload-icon { font-size: 40px; margin-bottom: 10px; }
     .upload-text { color: #666; font-size: 14px; }
     .upload-text strong { color: #667eea; cursor: pointer; }
     .status-badge { display: inline-block; padding: 8px 15px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 15px; width: 100%; text-align: center; }
-    .status-pending { background: #fff3cd; color: #856404; }
-    .status-loading { background: #cfe2ff; color: #084298; }
     .status-success { background: #d1e7dd; color: #0f5132; }
     .status-error { background: #f8d7da; color: #842029; }
     .file-info { background: #f0f0f0; padding: 12px; border-radius: 6px; margin-top: 15px; font-size: 13px; color: #333; }
-    .file-name { font-weight: 600; color: #667eea; word-break: break-all; }
+    .file-name { font-weight: 600; color: #667eea; }
     .button-group { display: flex; gap: 10px; margin-top: 20px; }
     button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
     .btn-primary { background: #667eea; color: white; }
-    .btn-primary:hover:not(:disabled) { background: #5568d3; box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
+    .btn-primary:hover:not(:disabled) { background: #5568d3; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-secondary { background: #ddd; color: #333; }
-    .btn-secondary:hover { background: #ccc; }
     .loading-spinner { display: none; text-align: center; padding: 20px; }
     .loading-spinner.show { display: block; }
     .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
@@ -48,40 +39,24 @@
     .results-container { display: grid; grid-template-columns: 1fr; gap: 15px; max-height: 600px; overflow-y: auto; padding-right: 10px; }
     .result-item { border-left: 4px solid; padding: 15px; border-radius: 6px; background: #f9f9f9; }
     .result-ok { border-left-color: #28a745; background: #d4edda; }
-    .result-warning { border-left-color: #ffc107; background: #fff3cd; }
     .result-error { border-left-color: #dc3545; background: #f8d7da; }
     .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     .result-cliente { font-weight: 600; font-size: 15px; color: #333; }
     .estado { font-weight: 600; font-size: 12px; padding: 4px 10px; border-radius: 4px; background: rgba(0, 0, 0, 0.1); }
     .result-details { font-size: 13px; color: #555; line-height: 1.6; }
-    .result-producto { font-weight: 500; margin-bottom: 8px; }
-    .result-cantidad { display: flex; gap: 20px; margin-bottom: 8px; }
-    .cant-item { flex: 1; }
-    .cant-label { font-size: 12px; color: #777; }
-    .cant-value { font-weight: 600; color: #333; font-size: 14px; }
-    .cant-diferencia { color: #dc3545; font-weight: 600; }
-    .result-mensaje { margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.05); border-radius: 4px; font-size: 12px; font-style: italic; }
     .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
     .stat-item { background: #f0f0f0; padding: 15px; border-radius: 8px; text-align: center; }
-    .stat-label { font-size: 12px; color: #666; margin-bottom: 5px; }
-    .stat-value { font-size: 24px; font-weight: 700; color: #333; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #667eea; }
     .stat-ok .stat-value { color: #28a745; }
-    .stat-warning .stat-value { color: #ffc107; }
     .stat-error .stat-value { color: #dc3545; }
-    .stat-total .stat-value { color: #667eea; }
     .empty-state { text-align: center; padding: 40px 20px; color: #999; }
-    .empty-state-icon { font-size: 48px; margin-bottom: 10px; }
-    .filter-section { display: flex; gap: 10px; margin-bottom: 15px; }
-    .filter-section input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
-    .filter-section select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
-    @media (max-width: 768px) { .main-grid { grid-template-columns: 1fr; } .stats-bar { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <h1>🚚 Validador de Transfers - Cofarsur</h1>
-      <p>Sistema inteligente de validación de transfers contra órdenes de compra</p>
+      <p>Sistema inteligente de validación de transfers</p>
     </div>
 
     <div class="main-grid">
@@ -89,23 +64,19 @@
         <h2>📂 Cargar Transfer Diario</h2>
         <div class="upload-area" id="uploadArea">
           <div class="upload-icon">📊</div>
-          <div class="upload-text">
-            Arrastra tu archivo Excel aquí<br>
-            o <strong>haz click para seleccionar</strong>
-          </div>
+          <div class="upload-text">Arrastra tu archivo Excel o <strong>click aquí</strong></div>
           <input type="file" id="fileInput" accept=".xlsx,.xls" />
         </div>
         <div id="fileInfo" class="file-info" style="display: none;">
-          <strong>Archivo cargado:</strong><br>
-          <span class="file-name" id="fileName"></span><br>
+          <strong>Archivo:</strong> <span class="file-name" id="fileName"></span><br>
           <strong>Registros:</strong> <span id="recordCount">0</span>
         </div>
         <div id="loadingSpinner" class="loading-spinner">
           <div class="spinner"></div>
-          <p>Procesando transfers...</p>
+          <p>Procesando...</p>
         </div>
-        <div id="statusBadge" class="status-badge status-pending">
-          ⏳ Pendiente: Selecciona un archivo
+        <div id="statusBadge" class="status-badge" style="background: #fff3cd; color: #856404;">
+          ⏳ Selecciona un archivo
         </div>
         <div class="button-group">
           <button class="btn-primary" id="analyzeBtn" disabled>🔍 Analizar</button>
@@ -114,49 +85,33 @@
       </div>
 
       <div class="panel">
-        <h2>📊 Resultados de Validación</h2>
+        <h2>📊 Resultados</h2>
         <div class="stats-bar">
-          <div class="stat-item stat-total">
-            <div class="stat-label">Total</div>
+          <div class="stat-item">
+            <div style="font-size: 12px; color: #666;">Total</div>
             <div class="stat-value" id="statTotal">0</div>
           </div>
           <div class="stat-item stat-ok">
-            <div class="stat-label">✅ OK</div>
+            <div style="font-size: 12px; color: #666;">✅ OK</div>
             <div class="stat-value" id="statOk">0</div>
           </div>
-          <div class="stat-item stat-warning">
-            <div class="stat-label">⚠️ Advertencia</div>
-            <div class="stat-value" id="statWarning">0</div>
-          </div>
           <div class="stat-item stat-error">
-            <div class="stat-label">❌ Error</div>
+            <div style="font-size: 12px; color: #666;">❌ Error</div>
             <div class="stat-value" id="statError">0</div>
           </div>
-        </div>
-        <div class="filter-section">
-          <input type="text" id="searchInput" placeholder="🔍 Buscar cliente o producto...">
-          <select id="filterStatus">
-            <option value="">Todos los estados</option>
-            <option value="OK">✅ OK</option>
-            <option value="ADVERTENCIA">⚠️ Advertencia</option>
-            <option value="ERROR">❌ Error</option>
-          </select>
-        </div>
-        <div class="results-container" id="resultsContainer">
-          <div class="empty-state">
-            <div class="empty-state-icon">📋</div>
-            <p>Los resultados aparecerán aquí después de analizar</p>
+          <div class="stat-item">
+            <div style="font-size: 12px; color: #666;">Clientes</div>
+            <div class="stat-value" id="statClientes">0</div>
           </div>
+        </div>
+        <div id="resultsContainer" class="results-container">
+          <div class="empty-state">Los resultados aparecerán aquí</div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    const SIMILARITY_THRESHOLD = 0.80;
-    let appState = { transfers: [], filteredTransfers: [], specialClients: {} };
-
-    // Clientes especiales HARDCODEADOS
     const SPECIAL_CLIENTS = {
       "MARCELLINO - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
       "DEL SUBNIVEL - TRF": ["BAGO S.A.", "MONTPELLIER S.A.", "ELEA S.A.", "MONTE VERDE S.A.", "BALIARDA S.A.", "CASASCO S.A.", "GADOR S.A."],
@@ -182,43 +137,25 @@
       "ALVEAR S.A.": ["TODOS LOS LABORATORIOS"]
     };
 
-    // Similitud simple
-    function similarityScore(a, b) {
-      if (!a || !b) return 0;
-      const s1 = String(a).toUpperCase().trim();
-      const s2 = String(b).toUpperCase().trim();
-      if (s1 === s2) return 1.0;
-      if (s1.includes(s2) || s2.includes(s1)) return 0.95;
-      let m = 0;
-      for (let i = 0; i < Math.min(s1.length, s2.length); i++) {
-        if (s1[i] === s2[i]) m++;
-      }
-      return m / Math.max(s1.length, s2.length);
-    }
+    let appState = { transfers: [], results: [] };
 
-    // DOM
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
     const analyzeBtn = document.getElementById('analyzeBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const statusBadge = document.getElementById('statusBadge');
-    const loadingSpinner = document.getElementById('loadingSpinner');
     const resultsContainer = document.getElementById('resultsContainer');
 
-    // EVENTOS
     uploadArea.addEventListener('click', () => fileInput.click());
-    uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
-    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.background = '#e8ebff'; });
+    uploadArea.addEventListener('dragleave', () => uploadArea.style.background = '#f8f9ff');
     uploadArea.addEventListener('drop', e => {
       e.preventDefault();
-      uploadArea.classList.remove('dragover');
-      if (e.dataTransfer.files[0]) { fileInput.files = e.dataTransfer.files; handleFileSelect(); }
+      uploadArea.style.background = '#f8f9ff';
+      fileInput.files = e.dataTransfer.files;
+      handleFileSelect();
     });
     fileInput.addEventListener('change', handleFileSelect);
     analyzeBtn.addEventListener('click', analyzeTransfers);
-    clearBtn.addEventListener('click', clearAll);
-    document.getElementById('searchInput').addEventListener('input', applyFilters);
-    document.getElementById('filterStatus').addEventListener('change', applyFilters);
+    document.getElementById('clearBtn').addEventListener('click', () => location.reload());
 
     function handleFileSelect() {
       const file = fileInput.files[0];
@@ -233,80 +170,92 @@
           document.getElementById('fileName').textContent = file.name;
           document.getElementById('recordCount').textContent = data.length;
           document.getElementById('fileInfo').style.display = 'block';
-          updateStatus('loading', '⏳ Archivo cargado: ' + data.length + ' transfers');
           analyzeBtn.disabled = false;
+          console.log('✅ Cargado:', data.length, 'transfers');
+          console.log('Columns:', Object.keys(data[0] || {}));
         } catch (err) {
-          updateStatus('error', '❌ Error: ' + err.message);
+          alert('Error: ' + err.message);
         }
       };
       reader.readAsArrayBuffer(file);
     }
 
     function analyzeTransfers() {
-      if (appState.transfers.length === 0) {
-        updateStatus('error', '❌ Sin transfers');
-        return;
-      }
+      if (appState.transfers.length === 0) return;
 
       showLoading(true);
-      console.log('🚀 ANÁLISIS INICIADO');
-      
+      const results = [];
+      let clientesCount = 0;
+
       setTimeout(() => {
         try {
-          const resultados = [];
-          console.log('Transfers a procesar:', appState.transfers.length);
-
+          // PASO 1: Iterar cada cliente especial
           for (const [clienteName, allowedLabs] of Object.entries(SPECIAL_CLIENTS)) {
             const todosTodos = allowedLabs.includes('TODOS LOS LABORATORIOS');
 
-            // Filtrar transfers del cliente
-            const clientTransfers = appState.transfers.filter(t => {
-              const keys = Object.keys(t);
-              const firstColVal = String(t[keys[0]] || '').trim().toUpperCase();
-              return firstColVal.includes(clienteName.toUpperCase());
+            // PASO 2: Buscar TODOS los transfers de este cliente
+            const clientRows = appState.transfers.filter(row => {
+              const allValues = Object.values(row).map(v => String(v || '').toUpperCase());
+              return allValues.some(val => val.includes(clienteName.toUpperCase()));
             });
 
-            if (clientTransfers.length === 0) continue;
-            console.log(`✅ ${clienteName}: ${clientTransfers.length} transfers`);
+            if (clientRows.length === 0) continue;
+            clientesCount++;
+            console.log(`✅ ${clienteName}: ${clientRows.length} transfers`);
 
-            for (const trf of clientTransfers) {
-              const keys = Object.keys(trf);
-              const labVal = String(trf[keys[1]] || '').trim();
-              const prodVal = String(trf[keys[2]] || '').trim();
-              const eanVal = String(trf[keys[3]] || '').trim();
-              const cantVal = parseInt(trf[keys[4]] || 0) || 0;
+            // PASO 3: Procesar cada transfer del cliente
+            for (const row of clientRows) {
+              const keys = Object.keys(row);
+              const laboratorio = row['Laboratorio'] || row['laboratorio'] || '';
+              const producto = row['Producto'] || row['producto'] || '';
+              const ean = row['Cod. Laboratorio'] || row['Codigo_Laboratorio'] || row['EAN'] || '';
 
               let estado = 'OK';
               let mensaje = '✓ Válido';
 
-              if (!todosTodos && labVal) {
-                const match = allowedLabs.find(l => similarityScore(labVal, l) >= SIMILARITY_THRESHOLD);
+              if (!todosTodos && laboratorio) {
+                const match = allowedLabs.find(l => 
+                  laboratorio.toUpperCase().includes(l.toUpperCase()) || 
+                  l.toUpperCase().includes(laboratorio.toUpperCase())
+                );
                 if (!match) {
                   estado = 'ERROR';
-                  mensaje = `Lab "${labVal}" no permitido`;
+                  mensaje = `Lab "${laboratorio}" no permitido`;
                 }
               }
 
-              resultados.push({
-                nro: String(trf[keys[0]] || '?'),
+              results.push({
                 cliente: clienteName,
-                lab: labVal,
-                prod: prodVal,
-                ean: eanVal,
-                cant: cantVal,
+                producto: producto,
+                laboratorio: laboratorio,
+                ean: ean,
                 estado: estado,
-                msg: mensaje
+                mensaje: mensaje
               });
             }
           }
 
-          console.log('✅ Total procesados:', resultados.length);
-          appState.filteredTransfers = resultados;
-          displayResults(resultados);
-          updateStatus('success', '✅ Completado');
+          appState.results = results;
+          displayResults(results);
+          const stats = {
+            total: results.length,
+            ok: results.filter(r => r.estado === 'OK').length,
+            error: results.filter(r => r.estado === 'ERROR').length,
+            clientes: clientesCount
+          };
+          document.getElementById('statTotal').textContent = stats.total;
+          document.getElementById('statOk').textContent = stats.ok;
+          document.getElementById('statError').textContent = stats.error;
+          document.getElementById('statClientes').textContent = stats.clientes;
+
+          document.getElementById('statusBadge').className = 'status-badge status-success';
+          document.getElementById('statusBadge').textContent = '✅ Análisis completo';
+          console.log('✅ ANÁLISIS FINALIZADO:', stats);
+
         } catch (err) {
-          console.error('❌ ERROR:', err);
-          updateStatus('error', '❌ ' + err.message);
+          console.error('Error:', err);
+          document.getElementById('statusBadge').className = 'status-badge status-error';
+          document.getElementById('statusBadge').textContent = '❌ Error: ' + err.message;
         } finally {
           showLoading(false);
         }
@@ -314,21 +263,9 @@
     }
 
     function displayResults(results) {
-      const stats = {
-        total: results.length,
-        ok: results.filter(r => r.estado === 'OK').length,
-        error: results.filter(r => r.estado === 'ERROR').length,
-        warning: results.filter(r => r.estado === 'ADVERTENCIA').length
-      };
-
-      document.getElementById('statTotal').textContent = stats.total;
-      document.getElementById('statOk').textContent = stats.ok;
-      document.getElementById('statError').textContent = stats.error;
-      document.getElementById('statWarning').textContent = stats.warning;
-
       resultsContainer.innerHTML = '';
       if (results.length === 0) {
-        resultsContainer.innerHTML = '<div class="empty-state"><p>Sin resultados</p></div>';
+        resultsContainer.innerHTML = '<div class="empty-state">Sin resultados</div>';
         return;
       }
 
@@ -337,16 +274,16 @@
         const html = `
           <div class="result-item ${cls}">
             <div class="result-header">
-              <div class="result-cliente">#${r.nro} - ${r.cliente}</div>
+              <div class="result-cliente">${r.cliente}</div>
               <span class="estado">${r.estado}</span>
             </div>
             <div class="result-details">
-              <div class="result-producto">${r.prod}</div>
-              <div class="result-cantidad">
-                <div><div class="cant-label">Lab:</div><div class="cant-value">${r.lab}</div></div>
-                <div><div class="cant-label">EAN:</div><div class="cant-value">${r.ean}</div></div>
+              <div style="font-weight: 500; margin-bottom: 8px;">${r.producto}</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                <div><div style="font-size: 12px; color: #777;">Lab:</div><div style="font-weight: 600;">${r.laboratorio}</div></div>
+                <div><div style="font-size: 12px; color: #777;">EAN:</div><div style="font-weight: 600;">${r.ean}</div></div>
               </div>
-              <div class="result-mensaje">${r.msg}</div>
+              <div style="padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 12px; font-style: italic;">${r.mensaje}</div>
             </div>
           </div>
         `;
@@ -354,33 +291,9 @@
       });
     }
 
-    function applyFilters() {
-      const search = document.getElementById('searchInput').value.toLowerCase();
-      const status = document.getElementById('filterStatus').value;
-      const filtered = appState.filteredTransfers.filter(r => {
-        const match1 = !search || r.cliente.toLowerCase().includes(search) || r.prod.toLowerCase().includes(search);
-        const match2 = !status || r.estado === status;
-        return match1 && match2;
-      });
-      displayResults(filtered);
-    }
-
-    function updateStatus(type, text) {
-      statusBadge.className = `status-badge status-${type}`;
-      statusBadge.textContent = text;
-    }
-
     function showLoading(show) {
-      loadingSpinner.classList.toggle('show', show);
+      document.getElementById('loadingSpinner').classList.toggle('show', show);
       analyzeBtn.disabled = show;
-    }
-
-    function clearAll() {
-      appState = { transfers: [], filteredTransfers: [], specialClients: {} };
-      fileInput.value = '';
-      document.getElementById('fileInfo').style.display = 'none';
-      resultsContainer.innerHTML = '<div class="empty-state"><p>Resultados aquí</p></div>';
-      updateStatus('pending', '⏳ Pendiente');
     }
   </script>
 </body>
