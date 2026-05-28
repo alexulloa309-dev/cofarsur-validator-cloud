@@ -170,7 +170,7 @@
       if (appState.transfers.length === 0) return;
       analyzeBtn.disabled = true;
 
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const results = [];
           const clientCounts = {};
@@ -189,7 +189,7 @@
               const nroTransf = Object.values(row)[0] || '?';
               const laboratorio = row['Laboratorio'] || '';
               const producto = row['Producto'] || '';
-              const ean = row['Cod. Laboratorio'] || row['EAN'] || '';
+              const ean = row['Cod. Barra'] || row['EAN'] || '';
               const cantRecibida = parseInt(row['Cantidad'] || 0) || 0;
 
               let estado = 'OK';
@@ -207,14 +207,62 @@
                 }
               }
 
-              // COMPARAR CANTIDADES (simple: si no hay coincidencia, ERROR)
-              if (cantRecibida === 0 && estado === 'OK') {
-                estado = 'ERROR';
-                diferencia = -100;
-                mensaje = 'Cantidad recibida = 0';
-              } else if (estado === 'OK') {
-                diferencia = 0; // Sin datos maestros, no calcular
-                mensaje = '✓ Laboratorio válido';
+              // CARGAR EXCEL DEL CLIENTE Y BUSCAR PRODUCTO
+              let cantEsperada = null;
+              let diferencia = 0;
+              
+              try {
+                const clientExcelUrl = `/data/${clienteName}.xlsx`;
+                
+                // Cargar Excel del cliente
+                const response = await fetch(clientExcelUrl);
+                if (response.ok) {
+                  const arrayBuffer = await response.arrayBuffer();
+                  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                  const clientData = XLSX.utils.sheet_to_json(worksheet);
+                  
+                  // Buscar producto por EAN (intentar múltiples nombres de columna)
+                  const productoEnCliente = clientData.find(row => {
+                    const rowEan = (row['Ean'] || row['EAN'] || row['Cod. Barra'] || row['CodigoBarra'] || '').toString().trim();
+                    return rowEan === ean && ean !== '';
+                  });
+                  
+                  if (productoEnCliente) {
+                    cantEsperada = parseInt(productoEnCliente['Cantidad'] || productoEnCliente['Cant'] || 0);
+                    
+                    if (cantEsperada > 0) {
+                      diferencia = ((cantRecibida - cantEsperada) / cantEsperada) * 100;
+                      
+                      // Determinar estado según diferencia
+                      if (Math.abs(diferencia) <= 5) {
+                        if (estado === 'OK') {
+                          estado = 'OK';
+                          mensaje = `✓ Cantidad OK (Esp: ${cantEsperada}, Rec: ${cantRecibida})`;
+                        }
+                      } else if (Math.abs(diferencia) < 20) {
+                        estado = 'ADVERTENCIA';
+                        mensaje = `⚠️ Diferencia: ${Math.abs(diferencia).toFixed(1)}% (Esp: ${cantEsperada}, Rec: ${cantRecibida})`;
+                      } else {
+                        estado = 'ERROR';
+                        mensaje = `❌ Diferencia GRAVE: ${Math.abs(diferencia).toFixed(1)}% (Esp: ${cantEsperada}, Rec: ${cantRecibida})`;
+                      }
+                    } else if (estado === 'OK') {
+                      mensaje = `✓ Laboratorio válido`;
+                    }
+                  } else if (estado === 'OK' && ean) {
+                    mensaje = `ℹ️ EAN ${ean} no encontrado en orden`;
+                  } else if (estado === 'OK') {
+                    mensaje = `✓ Laboratorio válido`;
+                  }
+                } else if (estado === 'OK') {
+                  mensaje = `✓ Laboratorio válido`;
+                }
+              } catch (e) {
+                console.warn(`Error cargando cliente ${clienteName}:`, e);
+                if (estado === 'OK') {
+                  mensaje = `✓ Laboratorio válido`;
+                }
               }
 
               results.push({
@@ -293,23 +341,27 @@
       }
       results.forEach(r => {
         const cls = r.estado === 'OK' ? '' : r.estado === 'ADVERTENCIA' ? 'warning' : 'error';
+        const diferenciaTxt = r.diferencia !== undefined && r.diferencia !== null 
+          ? `${r.diferencia >= 0 ? '+' : ''}${r.diferencia.toFixed(1)}%`
+          : '-';
+        
         const html = `
           <div class="result-item ${cls}">
             <div class="result-header">
-              <div class="result-cliente">#${r.nro_transfer} - ${r.cliente}</div>
+              <div class="result-cliente"><strong>#${r.nro_transfer}</strong> - ${r.cliente}</div>
               <span class="estado">${r.estado}</span>
             </div>
             <div class="result-details">
               <div class="result-producto">${r.producto}</div>
               <div class="result-info">
                 <div><strong>Lab:</strong> ${r.laboratorio}</div>
-                <div><strong>EAN:</strong> ${r.ean}</div>
+                <div><strong>EAN:</strong> ${r.ean || '-'}</div>
               </div>
               <div class="result-info">
-                <div><strong>Recibido:</strong> ${r.cantRecibida}</div>
-                <div><strong>Diferencia:</strong> ${r.diferencia >= 0 ? '+' : ''}${r.diferencia.toFixed(1)}%</div>
+                <div><strong>Cantidad:</strong> ${r.cantRecibida}</div>
+                <div><strong>Diferencia:</strong> <strong style="color: ${r.estado === 'ERROR' ? '#dc3545' : r.estado === 'ADVERTENCIA' ? '#ffc107' : '#28a745'};">${diferenciaTxt}</strong></div>
               </div>
-              <div style="margin-top: 6px; font-style: italic; opacity: 0.8;">${r.mensaje}</div>
+              <div style="margin-top: 6px; font-size: 11px; font-style: italic; opacity: 0.85;">${r.mensaje}</div>
             </div>
           </div>
         `;
